@@ -54,7 +54,7 @@ curl -X POST http://127.0.0.1:8102/upms/v1/decision \
 | --- | --- | --- | --- |
 | 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、端口、context path、i18n、错误码区间声明 |
 | local profile | `src/main/resources/config/application-local.yml` | ✅ | **仅**行为开关：自动装配排除项、时区、种子快照开关。**刻意不含任何连接信息** |
-| 环境取值 | 环境变量（开发时用 `.env` 承载） | ❌ `.env` 忽略；[`.env.example`](../../.env.example) 是模板 | 地址、端口、库名、口令 |
+| 环境取值 | 环境变量（开发时用 `.env` 承载） | ❌ `.env` 忽略；[`.env.example`](../.env.example) 是模板 | 地址、端口、库名、口令 |
 
 `application-local.yml` 之所以能进版本库，是因为它**不含任何环境相关的取值**——
 它对每个人、每台机器都是同一份。反过来，任何带 host / 口令的配置都不该进仓。
@@ -76,7 +76,7 @@ set -a && . ./.env && set +a
 java -jar target/mars-cloud-upms-service.jar
 ```
 
-`.env` 不进版本库（见 [`.gitignore`](../../.gitignore)）；`.env.example` 只列变量名与说明，可安全提交。
+`.env` 不进版本库（见 [`.gitignore`](../.gitignore)）；`.env.example` 只列变量名与说明，可安全提交。
 local profile 下**不填任何值也能启动**——连接参数只有在切到别的 profile 时才需要。
 
 ## 依赖边界

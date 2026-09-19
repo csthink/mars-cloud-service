@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: mars-cloud-sample-service
+  profiles:
+    # 默认 local：克隆下来直接能起，不必先准备任何外部依赖。
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  messages:
+    # 必需：缺这一行，错误文案会退化成裸错误码
+    basename: i18n/error-code
+    encoding: UTF-8
+
+mars:
+  env:
+    # 这里列出的 profile 视为开发/测试环境：失败响应会回带调试详情。
+    # 生产 profile 不要出现在这个列表里。
+    dev-profiles:
+      - local
+      - dev
+      - test
+      - testing
+
+  error-code:
+    validate: true
+    # 用到的框架层。区间数字取自框架内置的权威分配表（FrameworkErrorCodeRange），
+    # 这里只列名字，不写死数字。
+    framework-layers:
+      - common
+      - mvc
+    # 本服务自己的那一段。
+    # 业务服务共用 business 区段（66000–99999），各自声明一段、互不重叠；
+    # 本示例占用 66100–66199，见 docs/services.md 的服务清单。
+    ranges:
+      - owner: business
+        start: 66100
+        end: 66199
+
+server:
+  port: 8103
+  servlet:
+    context-path: /sample
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

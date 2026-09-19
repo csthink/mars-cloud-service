@@ -1,0 +1,7 @@
+# 示例服务的 local profile：只放「行为开关」，不放任何环境相关取值。
+#
+# 本模块**只依赖 mvc starter**，classpath 上没有数据源与 Redis，
+# 因此不需要像 upms-service 那样排除它们的自动装配。
+spring:
+  jackson:
+    time-zone: Asia/Shanghai

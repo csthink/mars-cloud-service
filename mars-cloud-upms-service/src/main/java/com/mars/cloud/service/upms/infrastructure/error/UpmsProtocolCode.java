@@ -1,6 +1,6 @@
 package com.mars.cloud.service.upms.infrastructure.error;
 
-public enum UimsProtocolCode {
+public enum UpmsProtocolCode {
     MISSING_FIELD("missing_field"),
     EMPTY_FIELD("empty_field"),
     MALFORMED_REQUEST("malformed_request"),
@@ -10,7 +10,7 @@ public enum UimsProtocolCode {
 
     private final String code;
 
-    UimsProtocolCode(String code) {
+    UpmsProtocolCode(String code) {
         this.code = code;
     }
 

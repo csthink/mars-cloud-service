@@ -4,7 +4,7 @@ import com.mars.cloud.service.upms.domain.decision.CanonicalValidator;
 import com.mars.cloud.service.upms.domain.decision.CanonicalViolationException;
 import com.mars.cloud.service.upms.domain.decision.MalformedResourceException;
 import com.mars.cloud.service.upms.domain.decision.ResourceId;
-import com.mars.cloud.service.upms.infrastructure.error.UimsProtocolCode;
+import com.mars.cloud.service.upms.infrastructure.error.UpmsProtocolCode;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -23,15 +23,15 @@ public class DecisionRequestParser {
 
     public DecisionRequest parse(Map<String, Object> body) {
         if (body == null) {
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_REQUEST, "request body must be a JSON object");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_REQUEST, "request body must be a JSON object");
         }
         if (!body.keySet().equals(REQUIRED_FIELDS)) {
             for (String field : REQUIRED_FIELDS) {
                 if (!body.containsKey(field)) {
-                    throw new ProtocolRequestException(UimsProtocolCode.MISSING_FIELD, "missing field: " + field);
+                    throw new ProtocolRequestException(UpmsProtocolCode.MISSING_FIELD, "missing field: " + field);
                 }
             }
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_REQUEST, "unexpected field in request body");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_REQUEST, "unexpected field in request body");
         }
 
         String callerId = requiredString(body, "caller_id");
@@ -43,32 +43,32 @@ public class DecisionRequestParser {
     private String requiredString(Map<String, Object> body, String field) {
         Object value = body.get(field);
         if (!(value instanceof String text)) {
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_REQUEST, field + " must be a string");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_REQUEST, field + " must be a string");
         }
         if (text.isEmpty()) {
-            throw new ProtocolRequestException(UimsProtocolCode.EMPTY_FIELD, field + " must be non-empty");
+            throw new ProtocolRequestException(UpmsProtocolCode.EMPTY_FIELD, field + " must be non-empty");
         }
         try {
             return canonicalValidator.requireCanonical(field, text);
         } catch (CanonicalViolationException ex) {
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_REQUEST, field + " must be canonical");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_REQUEST, field + " must be canonical");
         }
     }
 
     private String requiredResourceString(Map<String, Object> body) {
         Object value = body.get("resource");
         if (!(value instanceof String text)) {
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_REQUEST, "resource must be a string");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_REQUEST, "resource must be a string");
         }
         if (text.isEmpty()) {
-            throw new ProtocolRequestException(UimsProtocolCode.EMPTY_FIELD, "resource must be non-empty");
+            throw new ProtocolRequestException(UpmsProtocolCode.EMPTY_FIELD, "resource must be non-empty");
         }
         try {
             String canonical = canonicalValidator.requireCanonical("resource", text);
             ResourceId.parse(canonical, canonicalValidator);
             return canonical;
         } catch (MalformedResourceException | CanonicalViolationException ex) {
-            throw new ProtocolRequestException(UimsProtocolCode.MALFORMED_RESOURCE, "resource must be platform-prefixed");
+            throw new ProtocolRequestException(UpmsProtocolCode.MALFORMED_RESOURCE, "resource must be platform-prefixed");
         }
     }
 }

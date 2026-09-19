@@ -1,17 +1,17 @@
 package com.mars.cloud.service.upms.interfaces.dto;
 
-import com.mars.cloud.service.upms.infrastructure.error.UimsProtocolCode;
+import com.mars.cloud.service.upms.infrastructure.error.UpmsProtocolCode;
 
 public class ProtocolRequestException extends RuntimeException {
 
-    private final UimsProtocolCode code;
+    private final UpmsProtocolCode code;
 
-    public ProtocolRequestException(UimsProtocolCode code, String message) {
+    public ProtocolRequestException(UpmsProtocolCode code, String message) {
         super(message);
         this.code = code;
     }
 
-    public UimsProtocolCode code() {
+    public UpmsProtocolCode code() {
         return code;
     }
 }

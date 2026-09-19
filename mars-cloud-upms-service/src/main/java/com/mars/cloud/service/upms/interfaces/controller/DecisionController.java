@@ -6,7 +6,7 @@ import com.mars.cloud.service.upms.application.dto.DecisionOutcome;
 import com.mars.cloud.service.upms.application.service.DecisionService;
 import com.mars.cloud.service.upms.infrastructure.error.DecisionResponseEncoder;
 import com.mars.cloud.service.upms.infrastructure.error.SnapshotUnavailableSignal;
-import com.mars.cloud.service.upms.infrastructure.error.UimsProtocolCode;
+import com.mars.cloud.service.upms.infrastructure.error.UpmsProtocolCode;
 import com.mars.cloud.service.upms.interfaces.dto.DecisionRequest;
 import com.mars.cloud.service.upms.interfaces.dto.DecisionRequestParser;
 import com.mars.cloud.service.upms.interfaces.dto.DecisionResult;
@@ -47,9 +47,9 @@ public class DecisionController {
         } catch (ProtocolRequestException ex) {
             return encoder.error(HttpStatus.BAD_REQUEST, ex.code(), ex.getMessage());
         } catch (SnapshotUnavailableSignal ex) {
-            return encoder.error(HttpStatus.SERVICE_UNAVAILABLE, UimsProtocolCode.SNAPSHOT_UNAVAILABLE, ex.getMessage());
+            return encoder.error(HttpStatus.SERVICE_UNAVAILABLE, UpmsProtocolCode.SNAPSHOT_UNAVAILABLE, ex.getMessage());
         } catch (Exception ex) {
-            return encoder.error(HttpStatus.INTERNAL_SERVER_ERROR, UimsProtocolCode.INTERNAL_ERROR, "internal error");
+            return encoder.error(HttpStatus.INTERNAL_SERVER_ERROR, UpmsProtocolCode.INTERNAL_ERROR, "internal error");
         }
     }
 }

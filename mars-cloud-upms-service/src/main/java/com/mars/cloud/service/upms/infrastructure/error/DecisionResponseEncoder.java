@@ -19,7 +19,7 @@ public class DecisionResponseEncoder {
         return ResponseEntity.ok(UnifyResponse.success(result));
     }
 
-    public ResponseEntity<UnifyResponse<Object>> error(HttpStatus status, UimsProtocolCode code, String message) {
+    public ResponseEntity<UnifyResponse<Object>> error(HttpStatus status, UpmsProtocolCode code, String message) {
         UnifyResponse<Object> response = new UnifyResponse<>();
         response.setSuccess(false);
         response.setCode(code.code());

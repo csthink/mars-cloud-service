@@ -22,6 +22,7 @@
     -->
     <modules>
         <module>mars-cloud-upms-service</module>
+        <module>mars-cloud-sample-service</module>
     </modules>
 
 </project>

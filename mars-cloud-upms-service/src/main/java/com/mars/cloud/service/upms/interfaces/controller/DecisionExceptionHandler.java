@@ -3,7 +3,7 @@ package com.mars.cloud.service.upms.interfaces.controller;
 import com.mars.cloud.common.response.UnifyResponse;
 import com.mars.cloud.mvc.annotation.IgnoreResponseAnnotation;
 import com.mars.cloud.service.upms.infrastructure.error.DecisionResponseEncoder;
-import com.mars.cloud.service.upms.infrastructure.error.UimsProtocolCode;
+import com.mars.cloud.service.upms.infrastructure.error.UpmsProtocolCode;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -27,16 +27,16 @@ public class DecisionExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<UnifyResponse<Object>> handleUnreadableMessage(HttpMessageNotReadableException ex) {
-        return encoder.error(HttpStatus.BAD_REQUEST, UimsProtocolCode.MALFORMED_REQUEST, "malformed request");
+        return encoder.error(HttpStatus.BAD_REQUEST, UpmsProtocolCode.MALFORMED_REQUEST, "malformed request");
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<UnifyResponse<Object>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
-        return encoder.error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, UimsProtocolCode.MALFORMED_REQUEST, "malformed request");
+        return encoder.error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, UpmsProtocolCode.MALFORMED_REQUEST, "malformed request");
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<UnifyResponse<Object>> handleUnsupportedMethod(HttpRequestMethodNotSupportedException ex) {
-        return encoder.error(HttpStatus.METHOD_NOT_ALLOWED, UimsProtocolCode.MALFORMED_REQUEST, "malformed request");
+        return encoder.error(HttpStatus.METHOD_NOT_ALLOWED, UpmsProtocolCode.MALFORMED_REQUEST, "malformed request");
     }
 }
