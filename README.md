@@ -69,6 +69,7 @@ cd mars-cloud-sample-service && ./run-local.sh    # 端口 8103，context path /
 - [docs/services.md](docs/services.md) —— 服务清单、职责边界与错误码子区间占用表
 - [docs/deployment.md](docs/deployment.md) —— 构建产物、启动方式、配置来源、健康检查、上线前检查清单
 - [docs/ci.md](docs/ci.md) —— 流水线内容与跨仓触发
+- [CONTRIBUTING.md](CONTRIBUTING.md) —— 参与本仓开发：硬性约束、服务边界、新增服务的步骤
 - 各服务自己的 `README.md` —— 接口契约与本地启动
 
 ## 约定

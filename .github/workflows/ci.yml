@@ -16,7 +16,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # 分组里必须带上事件名：本仓同时接收 push 与 repository_dispatch，
+  # 而两者的 github.ref 都是 refs/heads/main —— 只用 ref 分组会让它们互相取消。
+  # 上游框架推送后本仓会被跨仓触发，若前后脚也有一次本仓 push，
+  # 那个 push run 就会被跨仓 run 取消，界面上显示 cancelled，容易被误判成构建失败。
+  # 带上事件名后，两类 run 各自独立：被取消的只会是**同一事件**下更早的那次。
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
