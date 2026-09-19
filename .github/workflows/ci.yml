@@ -29,7 +29,7 @@ jobs:
     name: 构建 + 测试 + 安全扫描
     runs-on: ubuntu-latest
     steps:
-      # service 依赖框架的 1.0.0-SNAPSHOT。框架还没真发版（design.md 4.5 的纪律），
+      # service 依赖框架的 1.0.0-SNAPSHOT。框架当前尚未发布正式版本，
       # CI 上必须先把框架装进本地仓库，否则依赖解析必然失败。
       # 两个仓都是 public，用默认 token 检出即可。
       - name: 检出 mars-cloud-framework（依赖来源）

@@ -25,8 +25,8 @@ class SnapshotProviderContractTest {
         DecisionSnapshot snapshot = new DecisionSnapshot(
                 "candidate",
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/workload"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Missing")))
+                List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Missing")))
         );
 
         assertThatThrownBy(() -> validator.validate(snapshot))
@@ -39,14 +39,14 @@ class SnapshotProviderContractTest {
         DecisionSnapshot unknownAction = new DecisionSnapshot(
                 "candidate-action",
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("sinan", "delete", "namespace/workload"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                List.of(role("platform-a", "Writer", grant("platform-a", "delete", "namespace/workload"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
         DecisionSnapshot unknownResource = new DecisionSnapshot(
                 "candidate-resource",
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/other"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/other"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
 
         assertThatThrownBy(() -> validator.validate(unknownAction))
@@ -62,8 +62,8 @@ class SnapshotProviderContractTest {
         DecisionSnapshot snapshot = new DecisionSnapshot(
                 "candidate",
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("opsdeck", "write", "namespace/workload"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                List.of(role("platform-a", "Writer", grant("demo", "write", "namespace/workload"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
 
         assertThatThrownBy(() -> validator.validate(snapshot))
@@ -86,8 +86,8 @@ class SnapshotProviderContractTest {
         DecisionSnapshot invalidCandidate = new DecisionSnapshot(
                 "invalid",
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("sinan", "delete", "namespace/workload"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                List.of(role("platform-a", "Writer", grant("platform-a", "delete", "namespace/workload"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
 
         provider.publishCandidate(active);
@@ -112,14 +112,14 @@ class SnapshotProviderContractTest {
         return new DecisionSnapshot(
                 snapshotId,
                 List.of(registry()),
-                List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/workload"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
     }
 
     private static PlatformRegistry registry() {
         return new PlatformRegistry(
-                "sinan",
+                "platform-a",
                 Set.of("write"),
                 Set.of("namespace/workload")
         );

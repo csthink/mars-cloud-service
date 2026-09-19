@@ -35,12 +35,12 @@ class RegistrarValidatorAdapterTest {
     private final RegistryFixtureLoader loader = new RegistryFixtureLoader();
 
     @Test
-    void opsdeckV1FixtureLoadsAndRegistersPlatformLocalCapabilities() {
-        RegistryDefinition registry = opsdeckV1();
+    void demoV1FixtureLoadsAndRegistersPlatformLocalCapabilities() {
+        RegistryDefinition registry = demoV1();
 
         validator.validateInitial(registry);
 
-        assertThat(registry.platform()).isEqualTo("opsdeck");
+        assertThat(registry.platform()).isEqualTo("demo");
         assertThat(registry.capsVer()).isEqualTo(1);
         assertThat(registry.toPlatformRegistry().resources()).contains(
                 "view:domain:kubernetes-ops",
@@ -56,7 +56,7 @@ class RegistrarValidatorAdapterTest {
 
     @Test
     void validatorRejectsPureViewAndVersionViolations() {
-        RegistryDefinition valid = opsdeckV1();
+        RegistryDefinition valid = demoV1();
 
         assertThatThrownBy(() -> validator.validateInitial(valid.withActions(List.of("view", "edit"))))
                 .isInstanceOf(RegistryValidationException.class)
@@ -76,7 +76,7 @@ class RegistrarValidatorAdapterTest {
         assertThatThrownBy(() -> validator.validateInitial(valid.withCapsVer(-1)))
                 .isInstanceOf(RegistryValidationException.class)
                 .hasMessageContaining("caps_ver");
-        assertThatThrownBy(() -> loader.load(new ClassPathResource("fixtures/registries/opsdeck-invalid-sensitivity.yml")))
+        assertThatThrownBy(() -> loader.load(new ClassPathResource("fixtures/registries/demo-invalid-sensitivity.yml")))
                 .isInstanceOf(RegistryValidationException.class)
                 .hasMessageContaining("sensitivity");
         for (String forbidden : List.of(
@@ -116,7 +116,7 @@ class RegistrarValidatorAdapterTest {
                 .hasMessageContaining("content change must bump caps_ver");
         assertThatThrownBy(() -> validator.validateTransition(
                 valid,
-                valid.withCapsVer(2).withContentHash("opsdeck-v2-fixture-hash"),
+                valid.withCapsVer(2).withContentHash("demo-v2-fixture-hash"),
                 RegistryValidationContext.of(List.of(), NOW, DWELL, snapshotWithDanglingGrant("candidate"))
         ))
                 .isInstanceOf(RegistryValidationException.class)
@@ -125,15 +125,15 @@ class RegistrarValidatorAdapterTest {
 
     @Test
     void lifecycleRemoveRequiresDeprecatedActiveEvidenceAndNoGrantReferences() {
-        RegistryDefinition deprecated = opsdeckV1()
+        RegistryDefinition deprecated = demoV1()
                 .withCapsVer(2)
-                .withContentHash("opsdeck-v2-deprecated")
-                .withResources(opsdeckV1().resourcesWith(
+                .withContentHash("demo-v2-deprecated")
+                .withResources(demoV1().resourcesWith(
                         CapabilityItem.deprecated("view:domain:tracing")
                 ));
         RegistryDefinition removed = deprecated
                 .withCapsVer(3)
-                .withContentHash("opsdeck-v3-removed")
+                .withContentHash("demo-v3-removed")
                 .withoutResource("view:domain:tracing");
         ActiveRegistryEvidence activeEvidence = ActiveRegistryEvidence.loaded(
                 "deprecated-active",
@@ -167,13 +167,13 @@ class RegistrarValidatorAdapterTest {
 
     @Test
     void lifecycleRemoveRejectsAcceptedButNeverActiveOrInsufficientDwellEvidence() {
-        RegistryDefinition deprecated = opsdeckV1()
+        RegistryDefinition deprecated = demoV1()
                 .withCapsVer(2)
-                .withContentHash("opsdeck-v2-deprecated")
-                .withResources(opsdeckV1().resourcesWith(CapabilityItem.deprecated("view:domain:tracing")));
+                .withContentHash("demo-v2-deprecated")
+                .withResources(demoV1().resourcesWith(CapabilityItem.deprecated("view:domain:tracing")));
         RegistryDefinition removed = deprecated
                 .withCapsVer(3)
-                .withContentHash("opsdeck-v3-removed")
+                .withContentHash("demo-v3-removed")
                 .withoutResource("view:domain:tracing");
 
         assertThatThrownBy(() -> validator.validateTransition(
@@ -210,7 +210,7 @@ class RegistrarValidatorAdapterTest {
 
     @Test
     void validatorRejectWritesSecurityEventWithoutReplacingHealthyActive() {
-        RegistryDefinition invalid = opsdeckV1().withActions(List.of("view", "edit"));
+        RegistryDefinition invalid = demoV1().withActions(List.of("view", "edit"));
 
         assertThatThrownBy(() -> validator.validateInitial(invalid))
                 .isInstanceOf(RegistryValidationException.class);
@@ -222,8 +222,8 @@ class RegistrarValidatorAdapterTest {
                 });
     }
 
-    private RegistryDefinition opsdeckV1() {
-        return loader.load(new ClassPathResource("fixtures/registries/opsdeck-v1.yml"));
+    private RegistryDefinition demoV1() {
+        return loader.load(new ClassPathResource("fixtures/registries/demo-v1.yml"));
     }
 
     private static DecisionSnapshot snapshotWithTracingGrant(String snapshotId) {
@@ -240,16 +240,16 @@ class RegistrarValidatorAdapterTest {
 
     private static DecisionSnapshot snapshot(String snapshotId, List<Grant> grants) {
         RegistryDefinition registry = new RegistryFixtureLoader()
-                .load(new ClassPathResource("fixtures/registries/opsdeck-v1.yml"));
+                .load(new ClassPathResource("fixtures/registries/demo-v1.yml"));
         return new DecisionSnapshot(
                 snapshotId,
                 List.of(registry.toPlatformRegistry()),
-                List.of(new RoleDefinition(new PlatformRoleKey("opsdeck", "Ops"), grants)),
-                Map.of("ops-user", Set.of(new PlatformRoleKey("opsdeck", "Ops")))
+                List.of(new RoleDefinition(new PlatformRoleKey("demo", "Ops"), grants)),
+                Map.of("ops-user", Set.of(new PlatformRoleKey("demo", "Ops")))
         );
     }
 
     private static Grant grant(String resource) {
-        return new Grant("opsdeck", "view", resource);
+        return new Grant("demo", "view", resource);
     }
 }

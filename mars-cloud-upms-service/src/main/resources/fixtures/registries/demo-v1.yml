@@ -1,7 +1,7 @@
-platform: opsdeck
+platform: demo
 caps_ver: 1
-content_hash: opsdeck-v1-fixture-hash
-syntax: opsdeck-v1
+content_hash: demo-v1-fixture-hash
+syntax: demo-v1
 actions:
   - view
 resources:

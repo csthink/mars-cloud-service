@@ -42,7 +42,7 @@ class DecisionEndpointNoActiveSnapshotTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())

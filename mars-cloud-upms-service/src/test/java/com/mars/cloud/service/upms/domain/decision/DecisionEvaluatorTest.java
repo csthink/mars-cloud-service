@@ -22,12 +22,12 @@ class DecisionEvaluatorTest {
     void matchingRoleGrantAllowsDecision() {
         DecisionOutcome outcome = evaluator.evaluate(
                 snapshotWithRoles(
-                        List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/workload"))),
-                        Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                        List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload"))),
+                        Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
                 ),
                 "caller-a",
                 "write",
-                resource("sinan:namespace/workload")
+                resource("platform-a:namespace/workload")
         );
 
         assertThat(outcome.decision()).isEqualTo("allow");
@@ -38,12 +38,12 @@ class DecisionEvaluatorTest {
     void registeredTripleWithoutGrantDeniesNoGrant() {
         DecisionOutcome outcome = evaluator.evaluate(
                 snapshotWithRoles(
-                        List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/workload"))),
-                        Map.of("caller-b", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                        List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload"))),
+                        Map.of("caller-b", Set.of(new PlatformRoleKey("platform-a", "Writer")))
                 ),
                 "caller-a",
                 "write",
-                resource("sinan:namespace/workload")
+                resource("platform-a:namespace/workload")
         );
 
         assertThat(outcome.decision()).isEqualTo("deny");
@@ -56,22 +56,22 @@ class DecisionEvaluatorTest {
 
         assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("unknown:namespace/workload")).reasonCode())
                 .isEqualTo("unregistered_platform");
-        assertThat(evaluator.evaluate(snapshot, "caller-a", "delete", resource("sinan:namespace/workload")).reasonCode())
+        assertThat(evaluator.evaluate(snapshot, "caller-a", "delete", resource("platform-a:namespace/workload")).reasonCode())
                 .isEqualTo("unregistered_action");
-        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("sinan:namespace/other")).reasonCode())
+        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("platform-a:namespace/other")).reasonCode())
                 .isEqualTo("unregistered_resource");
     }
 
     @Test
     void grantResourceUsesLiteralMatchingOnly() {
         DecisionSnapshot snapshot = snapshotWithRoles(
-                List.of(role("sinan", "WildcardLiteral", grant("sinan", "write", "workload:*"))),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "WildcardLiteral")))
+                List.of(role("platform-a", "WildcardLiteral", grant("platform-a", "write", "workload:*"))),
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "WildcardLiteral")))
         );
 
-        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("sinan:workload:*")).decision())
+        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("platform-a:workload:*")).decision())
                 .isEqualTo("allow");
-        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("sinan:workload:a")).decision())
+        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("platform-a:workload:a")).decision())
                 .isEqualTo("deny");
     }
 
@@ -79,22 +79,22 @@ class DecisionEvaluatorTest {
     void unionOfRolesAllowsWhenAnyGrantMatchesAndPlatformsRemainIsolated() {
         DecisionSnapshot snapshot = snapshotWithRoles(
                 List.of(
-                        role("sinan", "Reader", grant("sinan", "read", "namespace/workload")),
-                        role("sinan", "Writer", grant("sinan", "write", "namespace/workload")),
-                        role("opsdeck", "Writer", grant("opsdeck", "write", "namespace/workload"))
+                        role("platform-a", "Reader", grant("platform-a", "read", "namespace/workload")),
+                        role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload")),
+                        role("demo", "Writer", grant("demo", "write", "namespace/workload"))
                 ),
                 Map.of(
                         "caller-a", Set.of(
-                                new PlatformRoleKey("sinan", "Reader"),
-                                new PlatformRoleKey("sinan", "Writer")
+                                new PlatformRoleKey("platform-a", "Reader"),
+                                new PlatformRoleKey("platform-a", "Writer")
                         ),
-                        "caller-b", Set.of(new PlatformRoleKey("opsdeck", "Writer"))
+                        "caller-b", Set.of(new PlatformRoleKey("demo", "Writer"))
                 )
         );
 
-        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("sinan:namespace/workload")).decision())
+        assertThat(evaluator.evaluate(snapshot, "caller-a", "write", resource("platform-a:namespace/workload")).decision())
                 .isEqualTo("allow");
-        assertThat(evaluator.evaluate(snapshot, "caller-b", "write", resource("sinan:namespace/workload")).decision())
+        assertThat(evaluator.evaluate(snapshot, "caller-b", "write", resource("platform-a:namespace/workload")).decision())
                 .isEqualTo("deny");
     }
 
@@ -108,12 +108,12 @@ class DecisionEvaluatorTest {
                 "active",
                 List.of(
                         new PlatformRegistry(
-                                "sinan",
+                                "platform-a",
                                 Set.of("read", "write"),
                                 Set.of("namespace/workload", "workload:*", "workload:a")
                         ),
                         new PlatformRegistry(
-                                "opsdeck",
+                                "demo",
                                 Set.of("write"),
                                 Set.of("namespace/workload")
                         )

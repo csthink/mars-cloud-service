@@ -28,7 +28,7 @@
 ```bash
 curl -X POST http://127.0.0.1:8102/upms/v1/decision \
   -H 'Content-Type: application/json' \
-  -d '{"caller_id":"local-admin","action":"view","resource":"opsdeck:view:domain:kubernetes-ops"}'
+  -d '{"caller_id":"local-admin","action":"view","resource":"demo:view:domain:kubernetes-ops"}'
 ```
 
 ## 本地启动
@@ -41,7 +41,7 @@ curl -X POST http://127.0.0.1:8102/upms/v1/decision \
 
 - 关掉数据源与 Redis 的自动装配（连同它们的健康指示器），因此**无需任何外部依赖**即可启动
 - 启动后发布一份**开发种子快照**（`mars.upms.local-fixture.enabled`，默认打开），
-  种子里 `local-admin` 持有 `opsdeck` 平台的全部能力
+  种子里 `local-admin` 持有 `demo` 平台的全部能力
 
 想复现「无活动快照 → 所有决策请求返回 503」这条服务态路径，把
 `UPMS_LOCAL_FIXTURE_ENABLED=false` 传给进程即可。

@@ -30,12 +30,12 @@ import java.util.Set;
 @Configuration(proxyBeanMethods = false)
 public class LocalSnapshotSeedConfiguration {
 
-    private static final String FIXTURE = "fixtures/registries/opsdeck-v1.yml";
+    private static final String FIXTURE = "fixtures/registries/demo-v1.yml";
 
     /** 种子里获得该平台全部能力的演示主体。 */
-    private static final String DEMO_SUBJECT = "local-admin";
+    private static final String SEED_SUBJECT = "local-admin";
 
-    private static final String DEMO_ROLE = "LocalAdmin";
+    private static final String SEED_ROLE = "LocalAdmin";
 
     @Bean
     @ConditionalOnProperty(prefix = "mars.upms.local-fixture", name = "enabled", havingValue = "true")
@@ -52,13 +52,13 @@ public class LocalSnapshotSeedConfiguration {
                 .flatMap(item -> registry.actions().stream()
                         .map(action -> new Grant(registry.platform(), action, item.id())))
                 .toList();
-        PlatformRoleKey key = new PlatformRoleKey(registry.platform(), DEMO_ROLE);
+        PlatformRoleKey key = new PlatformRoleKey(registry.platform(), SEED_ROLE);
 
         return new DecisionSnapshot(
                 "local-fixture",
                 List.of(platform),
                 List.of(new RoleDefinition(key, grants)),
-                Map.of(DEMO_SUBJECT, Set.of(key))
+                Map.of(SEED_SUBJECT, Set.of(key))
         );
     }
 }

@@ -17,24 +17,24 @@ class CanonicalAndResourceIdTest {
         assertThatThrownBy(() -> validator.requireCanonical("action", " write"))
                 .isInstanceOf(CanonicalViolationException.class)
                 .hasMessageContaining("action");
-        assertThatThrownBy(() -> validator.requireCanonical("resource", "sinan:\nworkload"))
+        assertThatThrownBy(() -> validator.requireCanonical("resource", "platform-a:\nworkload"))
                 .isInstanceOf(CanonicalViolationException.class)
                 .hasMessageContaining("resource");
     }
 
     @Test
     void canonicalValueKeepsLiteralPatternCharacters() {
-        assertThat(validator.requireCanonical("resource", "sinan:workload:*?"))
-                .isEqualTo("sinan:workload:*?");
+        assertThat(validator.requireCanonical("resource", "platform-a:workload:*?"))
+                .isEqualTo("platform-a:workload:*?");
     }
 
     @Test
     void resourceIdParsesPlatformFromFirstColonOnly() {
-        ResourceId resourceId = ResourceId.parse("opsdeck:view:domain:observability", validator);
+        ResourceId resourceId = ResourceId.parse("demo:view:domain:observability", validator);
 
-        assertThat(resourceId.platform()).isEqualTo("opsdeck");
+        assertThat(resourceId.platform()).isEqualTo("demo");
         assertThat(resourceId.localId()).isEqualTo("view:domain:observability");
-        assertThat(resourceId.fullId()).isEqualTo("opsdeck:view:domain:observability");
+        assertThat(resourceId.fullId()).isEqualTo("demo:view:domain:observability");
     }
 
     @Test
@@ -43,7 +43,7 @@ class CanonicalAndResourceIdTest {
                 .isInstanceOf(MalformedResourceException.class);
         assertThatThrownBy(() -> ResourceId.parse(":local", validator))
                 .isInstanceOf(MalformedResourceException.class);
-        assertThatThrownBy(() -> ResourceId.parse("sinan:", validator))
+        assertThatThrownBy(() -> ResourceId.parse("platform-a:", validator))
                 .isInstanceOf(MalformedResourceException.class);
     }
 }

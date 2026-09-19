@@ -52,15 +52,15 @@ class AuditSinkTest {
                 auditSink
         );
 
-        service.decide(new DecisionRequest("caller-b", "write", "sinan:namespace/workload"));
-        service.decide(new DecisionRequest("caller-a", "write", "sinan:namespace/workload"));
+        service.decide(new DecisionRequest("caller-b", "write", "platform-a:namespace/workload"));
+        service.decide(new DecisionRequest("caller-a", "write", "platform-a:namespace/workload"));
 
         assertThat(auditSink.events()).singleElement().satisfies(event -> {
             assertThat(event.type()).isEqualTo("deny_decision");
             assertThat(event.fields())
                     .containsEntry("caller_id", "caller-b")
                     .containsEntry("action", "write")
-                    .containsEntry("resource", "sinan:namespace/workload")
+                    .containsEntry("resource", "platform-a:namespace/workload")
                     .containsEntry("reason_code", "no_grant")
                     .containsEntry("snapshot_id", "audit-snapshot");
             assertThat(event.fields().get("decision_id")).isNotBlank();
@@ -79,7 +79,7 @@ class AuditSinkTest {
         );
 
         com.mars.cloud.service.upms.application.dto.DecisionOutcome outcome =
-                service.decide(new DecisionRequest("caller-b", "write", "sinan:namespace/workload"));
+                service.decide(new DecisionRequest("caller-b", "write", "platform-a:namespace/workload"));
 
         assertThat(outcome.decision()).isEqualTo("deny");
         assertThat(outcome.reasonCode()).isEqualTo("no_grant");
@@ -90,15 +90,15 @@ class AuditSinkTest {
         return new DecisionSnapshot(
                 snapshotId,
                 List.of(new PlatformRegistry(
-                        "sinan",
+                        "platform-a",
                         Set.of("write"),
                         Set.of("namespace/workload")
                 )),
                 List.of(new RoleDefinition(
-                        new PlatformRoleKey("sinan", "Writer"),
-                        List.of(new Grant("sinan", "write", "namespace/workload"))
+                        new PlatformRoleKey("platform-a", "Writer"),
+                        List.of(new Grant("platform-a", "write", "namespace/workload"))
                 )),
-                Map.of("caller-a", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                Map.of("caller-a", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
     }
 

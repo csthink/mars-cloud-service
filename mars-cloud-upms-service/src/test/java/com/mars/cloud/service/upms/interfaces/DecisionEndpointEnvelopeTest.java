@@ -56,7 +56,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -77,7 +77,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-without-grant",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -96,7 +96,7 @@ class DecisionEndpointEnvelopeTest {
                         .content("""
                                 {
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -114,7 +114,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -165,9 +165,9 @@ class DecisionEndpointEnvelopeTest {
                         .content("""
                                 {
                                   "caller_id": "caller-allow",
-                                  "platform": "sinan",
+                                  "platform": "platform-a",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -202,7 +202,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": " sinan:namespace/workload"
+                                  "resource": " platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -222,7 +222,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())
@@ -254,7 +254,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "delete",
-                                  "resource": "sinan:namespace/workload"
+                                  "resource": "platform-a:namespace/workload"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -268,7 +268,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:namespace/other"
+                                  "resource": "platform-a:namespace/other"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -287,7 +287,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:workload:*"
+                                  "resource": "platform-a:workload:*"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -300,7 +300,7 @@ class DecisionEndpointEnvelopeTest {
                                 {
                                   "caller_id": "caller-allow",
                                   "action": "write",
-                                  "resource": "sinan:workload:a"
+                                  "resource": "platform-a:workload:a"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -314,19 +314,19 @@ class DecisionEndpointEnvelopeTest {
 
     private static DecisionSnapshot activeSnapshot() {
         return new DecisionSnapshot(
-                "m1-active",
-                List.of(new PlatformRegistry("sinan", Set.of("write"), Set.of("namespace/workload"))),
-                List.of(role("sinan", "Writer", grant("sinan", "write", "namespace/workload"))),
-                Map.of("caller-allow", Set.of(new PlatformRoleKey("sinan", "Writer")))
+                "2026-09-19-active",
+                List.of(new PlatformRegistry("platform-a", Set.of("write"), Set.of("namespace/workload"))),
+                List.of(role("platform-a", "Writer", grant("platform-a", "write", "namespace/workload"))),
+                Map.of("caller-allow", Set.of(new PlatformRoleKey("platform-a", "Writer")))
         );
     }
 
     private static DecisionSnapshot literalWildcardSnapshot() {
         return new DecisionSnapshot(
-                "m1-literal",
-                List.of(new PlatformRegistry("sinan", Set.of("write"), Set.of("workload:*", "workload:a"))),
-                List.of(role("sinan", "WildcardLiteral", grant("sinan", "write", "workload:*"))),
-                Map.of("caller-allow", Set.of(new PlatformRoleKey("sinan", "WildcardLiteral")))
+                "2026-09-19-literal",
+                List.of(new PlatformRegistry("platform-a", Set.of("write"), Set.of("workload:*", "workload:a"))),
+                List.of(role("platform-a", "WildcardLiteral", grant("platform-a", "write", "workload:*"))),
+                Map.of("caller-allow", Set.of(new PlatformRoleKey("platform-a", "WildcardLiteral")))
         );
     }
 

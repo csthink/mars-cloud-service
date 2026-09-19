@@ -20,7 +20,7 @@ public class RegistrarValidatorAdapter {
 
     private static final Pattern FORBIDDEN_OPERATION_TOKEN =
             Pattern.compile("(^|[:/_-])(apply|create|delete|exec|logs|patch|port-forward|scale|shell|ssh|sudo|update|write)([:/_-]|$)");
-    private static final Pattern OPSDECK_V1_RESOURCE =
+    private static final Pattern V1_RESOURCE =
             Pattern.compile("^(view:domain:[a-z0-9]+(?:-[a-z0-9]+)*|portal:[a-z0-9]+(?:-[a-z0-9]+)*)$");
 
     private final CanonicalValidator canonicalValidator;
@@ -76,7 +76,7 @@ public class RegistrarValidatorAdapter {
             throw new RegistryValidationException("registry resources must be non-empty");
         }
         if (!registry.actions().equals(java.util.List.of("view"))) {
-            throw new RegistryValidationException("opsdeck registrar fixture must remain pure view");
+            throw new RegistryValidationException("demo registrar fixture must remain pure view");
         }
         Set<String> seenResources = new HashSet<>();
         for (String action : registry.actions()) {
@@ -95,9 +95,9 @@ public class RegistrarValidatorAdapter {
     }
 
     private void requireSyntax(RegistryDefinition registry, String resource) {
-        if ("opsdeck-v1".equals(registry.syntax())) {
-            if (!OPSDECK_V1_RESOURCE.matcher(resource).matches()) {
-                throw new RegistryValidationException("registry resource does not match opsdeck-v1 syntax: " + resource);
+        if ("demo-v1".equals(registry.syntax())) {
+            if (!V1_RESOURCE.matcher(resource).matches()) {
+                throw new RegistryValidationException("registry resource does not match demo-v1 syntax: " + resource);
             }
             return;
         }

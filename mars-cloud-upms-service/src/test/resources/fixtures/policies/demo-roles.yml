@@ -1,20 +1,20 @@
-snapshot_id: opsdeck-m3-policy-fixture
+snapshot_id: demo-policy-fixture
 bindings:
   - subject: ops-dev
     roles:
-      - opsdeck/Dev
+      - demo/Dev
   - subject: ops-admin
     roles:
-      - opsdeck/Admin
+      - demo/Admin
 roles:
-  - platform: opsdeck
+  - platform: demo
     name: Dev
     grants:
       - action: view
         resource: view:domain:kubernetes-ops
       - action: view
         resource: view:domain:observability
-  - platform: opsdeck
+  - platform: demo
     name: Admin
     grants:
       - action: view

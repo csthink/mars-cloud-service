@@ -1,7 +1,7 @@
 package com.mars.cloud.service.upms.application.service;
 
-import com.mars.cloud.service.upms.application.dto.OpsdeckClaimPayload;
-import com.mars.cloud.service.upms.application.dto.OpsdeckClaimSupply;
+import com.mars.cloud.service.upms.application.dto.ClaimPayload;
+import com.mars.cloud.service.upms.application.dto.ClaimSupply;
 import com.mars.cloud.service.upms.domain.decision.CanonicalValidator;
 import com.mars.cloud.service.upms.domain.decision.DecisionEvaluator;
 import com.mars.cloud.service.upms.domain.decision.ResourceId;
@@ -17,26 +17,26 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class OpsdeckClaimFixtureService {
+public class ClaimFixtureService {
 
     private final DecisionEvaluator evaluator = new DecisionEvaluator();
     private final CanonicalValidator canonicalValidator = new CanonicalValidator();
 
-    public OpsdeckClaimPayload healthyPayload(DecisionSnapshot snapshot,
+    public ClaimPayload healthyPayload(DecisionSnapshot snapshot,
                                               RegistryDefinition registry,
                                               String subject) {
         requireMatchesActiveSnapshot(snapshot, registry);
-        return new OpsdeckClaimPayload(registry.capsVer(), allowedCapabilities(snapshot, registry, subject, false).caps());
+        return new ClaimPayload(registry.capsVer(), allowedCapabilities(snapshot, registry, subject, false).caps());
     }
 
-    public OpsdeckClaimSupply stalePayload(DecisionSnapshot lastKnown,
+    public ClaimSupply stalePayload(DecisionSnapshot lastKnown,
                                            RegistryDefinition registry,
                                            String subject,
                                            SupplyFreshness freshness) {
         requireMatchesActiveSnapshot(lastKnown, registry);
         AllowedCapabilities allowed = allowedCapabilities(lastKnown, registry, subject, true);
-        return new OpsdeckClaimSupply(
-                new OpsdeckClaimPayload(registry.capsVer(), allowed.caps()),
+        return new ClaimSupply(
+                new ClaimPayload(registry.capsVer(), allowed.caps()),
                 freshness.withSensitiveDropped(allowed.sensitiveDropped()),
                 List.of("expected fail-stale", "expected fail-closed")
         );

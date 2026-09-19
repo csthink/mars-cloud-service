@@ -4,11 +4,11 @@ import com.mars.cloud.service.upms.domain.snapshot.SupplyFreshness;
 
 import java.util.List;
 
-public record OpsdeckClaimSupply(OpsdeckClaimPayload payload,
+public record ClaimSupply(ClaimPayload payload,
                                  SupplyFreshness freshness,
                                  List<String> expectedDegradation) {
 
-    public OpsdeckClaimSupply {
+    public ClaimSupply {
         expectedDegradation = List.copyOf(expectedDegradation);
     }
 }
