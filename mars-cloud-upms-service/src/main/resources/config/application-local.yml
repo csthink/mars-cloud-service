@@ -1,0 +1,44 @@
+spring:
+  autoconfigure:
+    # PDP 决策的真相来源是内存快照，不是外部基础设施。
+    # local profile 因此关掉数据源与 Redis 的自动装配，让服务可以离线启动。
+    #
+    # ⚠️ 两条 Boot 4 陷阱，都会**静默失效**（不报错、只是没生效）：
+    #   1. 这些自动配置类在 Boot 4 里换了包：`org.springframework.boot.autoconfigure.{jdbc,data.redis}.*`
+    #      → `org.springframework.boot.{jdbc,data.redis}.autoconfigure.*`。
+    #      写旧包名不会报「类不存在」，排除列表被直接忽略，服务照旧去连库、连 Redis。
+    #   2. 健康指示器的自动装配是**独立**的，只关连接不够：
+    #      漏掉它们会让 /actuator/health 变 DOWN（db / redis 探针连不上），而 readiness 组仍显示 UP。
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.health.DataSourceHealthContributorAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.health.DataRedisHealthContributorAutoConfiguration
+  jackson:
+    time-zone: Asia/Shanghai
+
+# 说明：本 profile **刻意不写任何连接信息**（host / port / 库名 / 口令），
+# 因此这个文件对每个人、每台机器都是同一份，可以安全进版本库。
+# 数据源与 Redis 的连接参数由环境变量注入，见模块 README 的「配置」一节与仓根 `.env.example`。
+# 原则：配置值进版本库，配置的**环境相关取值**只从环境变量来。
+#
+# 将来 local profile 真的需要连库时，把下面两段取消注释即可，
+# 但**仍然不要写具体取值**——保持 `${VAR:}` 形态：
+#
+#   spring:
+#     datasource:
+#       url: ${SPRING_DATASOURCE_URL:}
+#       username: ${MYSQL_USERNAME:root}
+#       password: ${SPRING_DATASOURCE_PASSWORD:}
+#     data:
+#       redis:
+#         host: ${SPRING_DATA_REDIS_HOST:}
+#         port: ${SPRING_DATA_REDIS_PORT:}
+
+# 启动后发布一份开发种子快照：没有它，运行态永远「无活动快照」，
+# 所有决策请求都返回 503，成功路径无法在真进程里验收。
+mars:
+  upms:
+    local-fixture:
+      enabled: ${UPMS_LOCAL_FIXTURE_ENABLED:true}

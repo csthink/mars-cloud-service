@@ -20,8 +20,16 @@ target/
 *.log
 logs/
 
-# 本地配置与密钥（不进版本库）
-**/application-local.yml
+# 本地文件与密钥（不进版本库）
+#
+# 注意：`application-local.yml` **不在**忽略列表里——它只放「配置项与默认行为」，
+# 不含任何环境相关取值，因此每人每机都是同一份，必须进版本库。
+# 环境相关的取值（地址、端口、库名、口令）一律走环境变量：
+#   - 用 `mvn spring-boot:run` 启动时，放在仓根/模块根目录的 `.env` 会被自动读取
+#   - 用 `java -jar` 启动时需自行导出，或 `set -a && . ./.env && set +a`
+# 模板见 `.env.example`。
+.env
+.env.local
 **/configtree/
 *.p12
 *.jks
