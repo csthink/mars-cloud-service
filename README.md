@@ -1,9 +1,14 @@
 # mars-cloud-service
 
+[![CI](https://github.com/csthink/mars-cloud-service/actions/workflows/ci.yml/badge.svg)](https://github.com/csthink/mars-cloud-service/actions/workflows/ci.yml)
+
 mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与各业务服务。
 
 本仓只放能独立启动的应用（有主类、有端口、有部署配置）；可复用的库与 starter 都在
 配套的框架仓 `mars-cloud-framework` 里。
+
+> 上游框架仓构建成功后会自动触发本仓的 CI，避免「框架改了、服务没跟上」。
+> 流水线内容见 [docs/ci.md](docs/ci.md)。
 
 ## 快速开始
 
