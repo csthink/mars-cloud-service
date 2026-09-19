@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.mars.cloud</groupId>
+    <artifactId>mars-cloud-service</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>mars-cloud-service</name>
+    <description>mars-cloud 可部署服务仓：网关、认证服务与业务服务</description>
+
+    <!--
+      根聚合 POM 只做聚合，不做 parent。
+      各服务应用的 parent 是 com.mars.cloud:mars-cloud-dependencies，
+      依赖版本从框架仓的 BOM 继承，此处不重复声明版本。
+
+      服务模块按需逐个加入 <modules>，规划见 docs/services.md。
+    -->
+    <modules>
+        <!-- 服务模块尚未落地，按 docs/services.md 的顺序逐个加入 -->
+    </modules>
+
+</project>

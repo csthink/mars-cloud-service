@@ -1,0 +1,27 @@
+# Maven 构建产物
+target/
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# macOS
+.DS_Store
+
+# 日志
+*.log
+logs/
+
+# 本地配置与密钥（不进版本库）
+**/application-local.yml
+**/configtree/
+*.p12
+*.jks
