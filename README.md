@@ -21,14 +21,14 @@ mvn clean install
 mvn -pl mars-cloud-upms-service -am test
 ```
 
-## 服务规划
+## 服务
 
-| 服务 | 端口 | 错误码区间 | 职责 |
-| --- | --- | --- | --- |
-| `mars-cloud-gateway` | 8100 | `63000–63999` | 南北向唯一入口：路由、鉴权第一道、全局限流。响应式栈 |
-| `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：令牌签发、登录渠道、短信验证码、账号 |
-| `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） |
-| `mars-cloud-<biz>-service` | 8104+ | `66000+` | 业务服务，每服务 1000 或 2000 一段 |
+| 服务 | 端口 | 错误码区间 | 职责 | 状态 |
+| --- | --- | --- | --- | --- |
+| `mars-cloud-gateway` | 8100 | `63000–63999` | 南北向唯一入口：路由、鉴权第一道、全局限流。响应式栈 | 规划中 |
+| `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：令牌签发、登录渠道、短信验证码、账号 | 规划中 |
+| `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
+| `mars-cloud-<biz>-service` | 8104+ | `66000+` | 业务服务，每服务 1000 或 2000 一段 | 规划中 |
 
 各服务逐个加入根聚合 POM 的 `<modules>`，规划细节见 [docs/services.md](docs/services.md)。
 

@@ -1,0 +1,22 @@
+platform: opsdeck
+caps_ver: 1
+content_hash: opsdeck-v1-fixture-hash
+syntax: opsdeck-v1
+actions:
+  - view
+resources:
+  - id: view:domain:kubernetes-ops
+  - id: view:domain:observability
+  - id: view:domain:alerting
+  - id: view:domain:delivery
+  - id: view:domain:registry
+  - id: view:domain:storage
+  - id: view:domain:identity
+    sensitivity: sensitive
+  - id: view:domain:audit
+    sensitivity: sensitive
+  - id: view:domain:tracing
+    deprecated: true
+  - id: view:domain:networking-platform-infra
+  - id: portal:admin
+    sensitivity: sensitive

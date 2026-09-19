@@ -22,12 +22,15 @@
 - 登录渠道：微信、企业微信、钉钉、飞书、短信验证码
 - 账号、凭据、绑定关系、登录审计
 
-### mars-cloud-upms-service（8102，错误码 65000–65999）
+### mars-cloud-upms-service（8102，错误码 65000–65999）✅ 已落地
 
 授权（AuthZ）的**决策侧**（PDP）：
 
 - 输入 subject / action / resource，输出允许或拒绝
-- 权限数据与角色模型
+- 端点 `POST /upms/v1/decision`；`deny` 是 HTTP 200 的成功决策，只有服务态错误才走非 200
+- 当前阶段：决策真相来源是**内存快照**，local profile 启动时发布一份开发种子快照；
+  权限数据与角色模型的持久化、注册中心接入属后续阶段
+- 细节见 [模块 README](../mars-cloud-upms-service/README.md)
 
 ### 业务服务（8104+，错误码 66000+）
 

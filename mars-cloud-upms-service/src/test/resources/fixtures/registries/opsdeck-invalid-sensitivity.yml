@@ -1,0 +1,9 @@
+platform: opsdeck
+caps_ver: 1
+content_hash: opsdeck-invalid-sensitivity
+syntax: opsdeck-v1
+actions:
+  - view
+resources:
+  - id: view:domain:identity
+    sensitivity: sensitve

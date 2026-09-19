@@ -21,7 +21,7 @@
       服务模块按需逐个加入 <modules>，规划见 docs/services.md。
     -->
     <modules>
-        <!-- 服务模块尚未落地，按 docs/services.md 的顺序逐个加入 -->
+        <module>mars-cloud-upms-service</module>
     </modules>
 
 </project>

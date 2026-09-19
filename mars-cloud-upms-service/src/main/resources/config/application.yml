@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: mars-cloud-upms-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  main:
+    allow-circular-references: true
+    allow-bean-definition-overriding: true
+  mvc:
+    path-match:
+      matching-strategy: ant_path_matcher
+  messages:
+    basename: i18n/error-code
+    encoding: UTF-8
+
+mars:
+  env:
+    dev-profiles:
+      - local
+      - dev
+      - test
+      - testing
+  error-code:
+    # 框架层的归属名取自框架内置的权威分配表（FrameworkErrorCodeRange），
+    # 这里只列「本服务实际引入了哪些层」，不写死数字。
+    framework-layers:
+      - common
+      - mvc
+    # 业务服务自己的区间。upms-service 的权威区段是 65000–65999，
+    # 声明值必须落在该区段内，否则启动期校验直接失败。
+    ranges:
+      - owner: upms-service
+        start: 65000
+        end: 65999
+
+server:
+  servlet:
+    context-path: /upms
+  port: 8102
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

@@ -1,0 +1,27 @@
+snapshot_id: opsdeck-m3-policy-fixture
+bindings:
+  - subject: ops-dev
+    roles:
+      - opsdeck/Dev
+  - subject: ops-admin
+    roles:
+      - opsdeck/Admin
+roles:
+  - platform: opsdeck
+    name: Dev
+    grants:
+      - action: view
+        resource: view:domain:kubernetes-ops
+      - action: view
+        resource: view:domain:observability
+  - platform: opsdeck
+    name: Admin
+    grants:
+      - action: view
+        resource: view:domain:observability
+      - action: view
+        resource: view:domain:identity
+      - action: view
+        resource: view:domain:tracing
+      - action: view
+        resource: portal:admin
