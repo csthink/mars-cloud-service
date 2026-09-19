@@ -13,6 +13,9 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 ## 快速开始
 
 ```bash
+# 克隆后先装 pre-commit hook（幂等，只需一次）
+./tools/install-hooks.sh
+
 # 先构建并安装框架仓
 mvn -f ../mars-cloud-framework/pom.xml clean install
 
