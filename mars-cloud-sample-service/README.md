@@ -96,6 +96,14 @@ curl -s -X POST $B/v1/orders -H 'Content-Type: application/json' \
 
 消费方要先看 HTTP 状态码与 `success` 位，再决定读 `result` 还是 `code`。
 
+> **本地跑时你会多看到一个 `result`**：上面的示例是**非开发环境**的形状。
+> 本模块默认的 `local` profile 在 `mars.env.dev-profiles` 列表里，属开发环境，
+> 因此失败响应会额外回带调试详情（异常详情、请求 IP、方法、URI、请求头），
+> 例如 `"result":{"detail":"66102","ip":"127.0.0.1","method":"POST","uri":"..."}`。
+>
+> 这个开关由 `mars.env.dev-profiles` 控制——**上线前务必确认生产 profile 不在该列表里**，
+> 否则调试详情会连同错误响应一起发出去。见 [部署说明](../docs/deployment.md)。
+
 ### 3. 参数校验失败是 HTTP 400
 
 校验注解写在 DTO 上，控制器加 `@Valid`，业务代码里不写 if 判断：
