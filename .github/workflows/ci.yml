@@ -26,18 +26,18 @@ jobs:
       # CI 上必须先把框架装进本地仓库，否则依赖解析必然失败。
       # 两个仓都是 public，用默认 token 检出即可。
       - name: 检出 mars-cloud-framework（依赖来源）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: csthink/mars-cloud-framework
           path: .deps/mars-cloud-framework
 
       - name: 检出本仓
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: .deps/mars-cloud-service
 
       - name: 安装 JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
@@ -63,7 +63,7 @@ jobs:
 
       - name: 上传测试报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
           path: .deps/mars-cloud-service/**/target/surefire-reports/
