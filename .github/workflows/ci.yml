@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # 由 mars-cloud-framework 的 CI 在构建成功后触发（见那边的 ci.yml 与本仓 docs/ci.md）。
+  repository_dispatch:
+    types: [framework-updated]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建 + 测试 + 安全扫描
+    runs-on: ubuntu-latest
+    steps:
+      # service 依赖框架的 1.0.0-SNAPSHOT。框架还没真发版（design.md 4.5 的纪律），
+      # CI 上必须先把框架装进本地仓库，否则依赖解析必然失败。
+      # 两个仓都是 public，用默认 token 检出即可。
+      - name: 检出 mars-cloud-framework（依赖来源）
+        uses: actions/checkout@v4
+        with:
+          repository: csthink/mars-cloud-framework
+          path: .deps/mars-cloud-framework
+
+      - name: 检出本仓
+        uses: actions/checkout@v4
+        with:
+          path: .deps/mars-cloud-service
+
+      - name: 安装 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: 安装框架到本地仓库
+        working-directory: .deps/mars-cloud-framework
+        run: mvn -B -Dmaven.repo.local="$HOME/.m2/repository" clean install
+
+      - name: 构建并测试本仓
+        working-directory: .deps/mars-cloud-service
+        run: mvn -B -Dmaven.repo.local="$HOME/.m2/repository" clean package
+
+      - name: 公开安全扫描（通用版）
+        working-directory: .deps/mars-cloud-service
+        run: bash tools/check-public-safety-generic.sh .
+
+      # 说明：**没有**单独的「关键词扫描 secret」步骤。
+      # 那种写法（命中 password/secret 等词即报警）在真实仓库上全是误报——
+      # 它会打中扫描脚本自身、测试代码、以及 `password: ""` 这类合法配置。
+      # 通用扫描里的「凭据」规则已经更准：**关键词 + 赋值 + 8 位以上字面量**，
+      # 占位符与空值不匹配。要更强的检测应上专用工具（gitleaks 等），而不是手写关键词 grep。
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: .deps/mars-cloud-service/**/target/surefire-reports/
+          if-no-files-found: ignore
