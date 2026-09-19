@@ -46,3 +46,14 @@ bash tools/check-public-safety-generic.sh .
 [框架仓的 docs/ci.md](https://github.com/csthink/mars-cloud-framework/blob/main/docs/ci.md)）。
 
 本仓这边**无需任何配置**——`repository_dispatch` 是 GitHub 内置触发器，收到事件即按 `main` 构建。
+
+> **当前状态**：框架仓的 `SERVICE_DISPATCH_TOKEN` secret 尚未配置（或正在轮换为细粒度 PAT），
+> 所以**自动触发暂时是不生效的**——框架仓的流水线不会失败，只是跳过那一步。
+> 想确认是否已生效：
+
+```bash
+gh run list -R csthink/mars-cloud-service --limit 5   # 看到 event=repository_dispatch 即为已生效
+```
+
+> 在该 secret 配好之前，框架变更后请手动触发本仓流水线：
+> `gh workflow run ci.yml -R csthink/mars-cloud-service`

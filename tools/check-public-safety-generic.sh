@@ -37,16 +37,35 @@ report() {
 
 scan() {
   local category="$1" pattern="$2"
+  local matches
+
+  if [ "$SCAN_MODE" = "git" ]; then
+    # 用 `git grep`：只搜**已跟踪**的文件，天然排除 .gitignore 里的内容
+    # （典型：VSCode 自动生成的 .vscode/settings.json 里写着本机路径，但它从不进仓）。
+    # 反过来，若有人**已经提交**了这类文件，git grep 照样会搜到；
+    # 靠 `--exclude-dir` 排除目录反而会漏掉这种情况。
+    # pattern 走 `-e`，避免被 shell 当路径做 glob 展开。
+    matches=$(git -C "$TARGET" grep -nIE -e "$pattern" --no-color 2>/dev/null || true)
+  else
+    matches=$(grep -rnIE --binary-files=without-match "$pattern" "$TARGET" \
+                --exclude-dir=target --exclude-dir=.git --exclude-dir=node_modules \
+                --exclude-dir=build 2>/dev/null || true)
+  fi
+
   while IFS=: read -r file line text; do
     [ -z "${file:-}" ] && continue
     report "$category" "$file" "$line" "$text"
-  done < <(grep -rnIE --binary-files=without-match "$pattern" "$TARGET" \
-             --exclude-dir=target --exclude-dir=.git --exclude-dir=node_modules \
-             --exclude-dir=.idea --exclude-dir=build 2>/dev/null || true)
+  done <<< "$matches"
 }
 
 echo "==> 公开仓安全性检查（通用版）：$TARGET"
 echo
+
+# 只扫会被提交的内容：判据是 git 的跟踪状态，不是文件系统遍历（见 scan() 的说明）
+SCAN_MODE="fs"
+if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SCAN_MODE="git"
+fi
 
 # 1. 凭据与私钥
 scan "凭据" '(password|passwd|secret|token|apikey|api_key)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,}'
