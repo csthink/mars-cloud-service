@@ -1,0 +1,9 @@
+# 网关的 local profile 只放行为开关，没有任何连接信息。
+#
+# 说明：本 profile **刻意不写任何连接信息**（host / 端口 / Namespace / 口令），
+# 因此这个文件对每个人、每台机器都是同一份，可以安全进版本库。
+# Nacos 的地址、Namespace 与账号由环境变量注入，见模块 README 的「配置」一节与仓根 `.env.example`。
+# 原则：配置值进版本库，配置的**环境相关取值**只从环境变量来。
+spring:
+  jackson:
+    time-zone: Asia/Shanghai

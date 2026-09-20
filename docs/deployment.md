@@ -37,12 +37,13 @@ mvn -pl mars-cloud-upms-service -am clean package
 
 | 服务 | 生产式启动 | 本地开发启动 |
 | --- | --- | --- |
+| `mars-cloud-gateway` | `java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-gateway.jar` | `cd mars-cloud-gateway && ./run-local.sh` |
 | `mars-cloud-upms-service` | `java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-upms-service.jar` | `cd mars-cloud-upms-service && ./run-local.sh` |
 | `mars-cloud-sample-service` | `java -jar target/mars-cloud-sample-service.jar` | `cd mars-cloud-sample-service && ./run-local.sh` |
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
-UPMS 需要其中的 Nacos Namespace 与账号；sample service 不需要 Nacos 参数。
-UPMS 的启动命令多出的 JVM 参数见下一节。
+网关与 UPMS 需要其中的 Nacos Namespace 与账号；sample service 不需要 Nacos 参数。
+网关与 UPMS 的启动命令多出的 JVM 参数见下一节。
 
 > **`java -jar` 不会读 `.env`。** Spring Boot 本身没有 `.env` 支持——应用读的是
 > **环境变量**；`mvn spring-boot:run`（即 `run-local.sh`）只是恰好会加载模块根目录的
@@ -51,7 +52,7 @@ UPMS 的启动命令多出的 JVM 参数见下一节。
 
 ## JVM 参数
 
-接入 Nacos 的服务（当前是 UPMS）在 JDK 24 及以上启动时必须带：
+接入 Nacos 的服务（当前是网关与 UPMS）在 JDK 24 及以上启动时必须带：
 
 ```
 --sun-misc-unsafe-memory-access=allow
@@ -64,20 +65,29 @@ UPMS 的启动命令多出的 JVM 参数见下一节。
 （[nacos#14070](https://github.com/alibaba/nacos/issues/14070)），不是本仓代码调用了 `Unsafe`；
 这个参数是 JDK 给出的规避方式，效果是把该次调用当作允许，不再打印警告。
 
+classpath 上带 Netty 平台原生库的服务（当前是网关：Reactor Netty 带来 macOS 的 DNS 解析器与
+Linux 的 epoll）还必须带：
+
+```
+--enable-native-access=ALL-UNNAMED
+```
+
+原因：JDK 24 起（JEP 472）未声明原生访问的模块调用 `System::loadLibrary` 时，会向标准错误打印一组以
+`WARNING: A restricted method in java.lang.System has been called` 开头的警告，后续 JDK 版本会改为拒绝。
+这个参数是 JDK 给出的声明方式。没有原生库的服务带上无副作用。
+
 参数分别固化在每一类启动入口，不依赖运行者记得：
 
 | 入口 | 固化位置 |
 | --- | --- |
-| `mvn spring-boot:run`（含 `run-local.sh`） | 框架 BOM `mars-cloud-dependencies` 的 `pluginManagement` 统一给 `spring-boot-maven-plugin` 配置 `jvmArguments`，本仓不需要再写 |
-| 容器 | 模块 `Dockerfile` 的 `ENTRYPOINT`，由 `NacosIntegrationContractTest` 守护 |
+| `mvn spring-boot:run`（含 `run-local.sh`） | 框架 BOM `mars-cloud-dependencies` 的 `pluginManagement` 统一给 `spring-boot-maven-plugin` 配置 `jvmArguments`（两个参数都在），本仓不需要再写 |
+| 容器 | 模块 `Dockerfile` 的 `ENTRYPOINT`，由各模块的 `NacosIntegrationContractTest` 守护 |
 | 手工 `java -jar` | 见上表的启动命令，需要自己写上 |
 | IDE 直接运行主类 | IDE 不经过 Maven 插件，需在运行配置的 VM options 里自行加上 |
-| Maven 进程本身（编译期） | 仓根 `.mvn/jvm.config`。这一处针对的是 Lombok 在 JDK 24 及以上编译期的同一条警告，与 Nacos 无关；它只作用于 Maven 进程 |
+| 测试 JVM | 框架 BOM 统一给 surefire 的 `argLine` 配置 `--enable-native-access=ALL-UNNAMED`（网关的契约测试会真的发起 HTTP 调用）。Unsafe 那条测试 JVM 不需要：测试明确离线（见「Profile 语义」），Nacos 客户端不会被调用 |
+| Maven 进程本身（编译期） | 仓根 `.mvn/jvm.config`。这一处针对的是 Lombok 在 JDK 24 及以上编译期的同一条 Unsafe 警告，与 Nacos 无关；它只作用于 Maven 进程 |
 
-测试 JVM 不需要这个参数：测试明确离线（见「Profile 语义」），Nacos 客户端不会被调用，
-也就不会触发这组警告。
-
-不接入 Nacos 的服务（当前是 sample service）不需要它；加上也无害。
+不接入 Nacos 的服务（当前是 sample service）不需要 Unsafe 那条；加上也无害。
 
 ## 配置来源与优先级
 
@@ -118,6 +128,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 
 | profile | 用途 | 外部依赖 |
 | --- | --- | --- |
+| `local`（网关） | 本机开发 | Nacos。路由目标不必先起来 |
 | `local`（UPMS） | 本机开发 | Nacos。数据源与 Redis 的自动装配保持关闭 |
 | `local`（sample） | 本机开发 | 无 |
 | 其他 | 部署环境 | 需要真实基础设施 |
@@ -163,7 +174,7 @@ management:
 
 | 服务 | 端口 | context path |
 | --- | --- | --- |
-| `mars-cloud-gateway` | 8100 | （规划中） |
+| `mars-cloud-gateway` | 8100 | 无（路径原样转发给目标服务） |
 | `mars-cloud-auth-service` | 8101 | （规划中） |
 | `mars-cloud-upms-service` | 8102 | `/upms` |
 | `mars-cloud-sample-service` | 8103 | `/sample` |
@@ -198,10 +209,12 @@ spring:
 
 ## 启动顺序
 
-当前 UPMS 已接入 Nacos，启动前必须先启动注册中心。引入网关后，顺序为
-**先起注册中心，再起网关，最后起业务服务**。
-网关先于注册中心启动时服务发现可能失败——这一条已列入网关相关工作项的验收条件，
-不是「理论上可能」。
+网关与 UPMS 都接入 Nacos，启动前必须先启动注册中心（两者对 Nacos 的导入都不是 `optional:`，
+注册中心不可用时启动失败）。
+
+**网关与业务服务之间没有顺序要求**：网关先起时，目标服务没有实例的请求返回信封式 503
+（`63002`），业务服务上线后网关自动发现，不需要重启。这条由网关的 `verify-e2e.sh`
+以真进程按「先网关、后 UPMS」的顺序验证。
 
 ## 上线前检查清单
 

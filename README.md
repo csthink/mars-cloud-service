@@ -16,7 +16,7 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 `--sun-misc-unsafe-memory-access=allow`（Lombok 在 JDK 24 及以上编译期需要），无需手动设置；
 应用进程自己需要的同名参数见 [`docs/deployment.md`](docs/deployment.md) 的「JVM 参数」一节。
 测试 JVM 由框架 BOM 统一配置为以 `-javaagent` 预加载 mockito-core，因此**有测试的模块必须依赖
-`spring-boot-starter-test`**（本仓两个服务都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
+`spring-boot-starter-test`**（本仓三个模块都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
 `${org.mockito:mockito-core:jar}`。
 
 本仓依赖框架仓 `mars-cloud-framework`，而框架尚未发布到制品库，
@@ -52,7 +52,7 @@ mvn -pl mars-cloud-upms-service -am test
 
 | 服务 | 端口 | 错误码区间 | 职责 | 状态 |
 | --- | --- | --- | --- | --- |
-| `mars-cloud-gateway` | 8100 | `63000–63999` | 南北向唯一入口：路由、鉴权第一道、全局限流。响应式栈 | 规划中 |
+| `mars-cloud-gateway` | 8100 | `63000–63999` | 南北向唯一入口：路由到各业务服务，错误响应与业务服务同一种信封。响应式栈 | ✅ 已落地（鉴权第一道与全局限流待后续接入） |
 | `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：令牌签发、登录渠道、短信验证码、账号 | 规划中 |
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | 框架使用示例：一条命令跑起来的完整接线示范 | ✅ 已落地 |
@@ -67,6 +67,13 @@ mvn -pl mars-cloud-upms-service -am test
 ```bash
 mvn -pl mars-cloud-sample-service -am package
 cd mars-cloud-sample-service && ./run-local.sh    # 端口 8103，context path /sample
+```
+
+**想从入口走一遍**：先起网关、再起 UPMS，经网关访问 UPMS（需要本机 Nacos，见各模块 README）：
+
+```bash
+mvn package
+cd mars-cloud-gateway && ./verify-e2e.sh          # 真进程验收，含「网关先起、UPMS 后起」的启动顺序
 ```
 
 ## 文档

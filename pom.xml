@@ -21,6 +21,7 @@
       服务模块按需逐个加入 <modules>，规划见 docs/services.md。
     -->
     <modules>
+        <module>mars-cloud-gateway</module>
         <module>mars-cloud-upms-service</module>
         <module>mars-cloud-sample-service</module>
     </modules>
