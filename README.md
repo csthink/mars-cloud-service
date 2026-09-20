@@ -15,6 +15,9 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 需要 **JDK 25** 与 Maven。仓内 `.mvn/jvm.config` 会给 Maven 进程带上
 `--sun-misc-unsafe-memory-access=allow`（Lombok 在 JDK 24 及以上编译期需要），无需手动设置；
 应用进程自己需要的同名参数见 [`docs/deployment.md`](docs/deployment.md) 的「JVM 参数」一节。
+测试 JVM 由框架 BOM 统一配置为以 `-javaagent` 预加载 mockito-core，因此**有测试的模块必须依赖
+`spring-boot-starter-test`**（本仓两个服务都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
+`${org.mockito:mockito-core:jar}`。
 
 本仓依赖框架仓 `mars-cloud-framework`，而框架尚未发布到制品库，
 所以**两个仓必须先克隆到同一个父目录下**，本仓才能通过相对路径拿到框架的构建产物：
