@@ -29,7 +29,7 @@
 - 输入 subject / action / resource，输出允许或拒绝
 - 端点 `POST /upms/v1/decision`；`deny` 是 HTTP 200 的成功决策，只有服务态错误才走非 200
 - 当前阶段：决策真相来源是**内存快照**，local profile 启动时发布一份开发种子快照；
-  权限数据与角色模型的持久化、注册中心接入属后续阶段
+  已接入 Nacos 注册中心与两层动态配置；权限数据与角色模型的持久化仍属后续阶段
 - 细节见 [模块 README](../mars-cloud-upms-service/README.md)
 
 ### 业务服务（8104+，错误码 66000–99999）

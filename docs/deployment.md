@@ -41,6 +41,7 @@ mvn -pl mars-cloud-upms-service -am clean package
 | `mars-cloud-sample-service` | `java -jar target/mars-cloud-sample-service.jar` | `cd mars-cloud-sample-service && ./run-local.sh` |
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
+UPMS 需要其中的 Nacos Namespace 与账号；sample service 不需要 Nacos 参数。
 
 > **`java -jar` 不会读 `.env`。** Spring Boot 本身没有 `.env` 支持——应用读的是
 > **环境变量**；`mvn spring-boot:run`（即 `run-local.sh`）只是恰好会加载模块根目录的
@@ -55,6 +56,7 @@ mvn -pl mars-cloud-upms-service -am clean package
 | --- | --- | --- | --- |
 | 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、**默认端口**、context path、i18n、错误码区间声明 |
 | profile 覆盖 | `src/main/resources/config/application-<profile>.yml` | ✅ | **仅**行为开关（自动装配排除项、时区、功能开关）。**不含任何 host / 端口 / 库名 / 口令** |
+| Nacos 动态配置 | 环境 Namespace 下的共享与应用 Data ID | ❌ | 非敏感、需要动态刷新的默认值与应用覆盖值 |
 | 环境取值 | 环境变量 | ❌ | 地址、端口、库名、口令 |
 
 「端口」在两处出现，口径是：**默认值进版本库**（让新克隆能直接跑起来），
@@ -64,7 +66,8 @@ mvn -pl mars-cloud-upms-service -am clean package
 反过来说：**任何带 host 或口令的配置都不该进仓**。这条约定由各服务的
 `LocalConfigHygieneTest` 守护——谁把连接信息写回配置文件，测试就红。
 
-覆盖优先级（后者覆盖前者）：`application.yml` → `application-<profile>.yml` → 环境变量。
+Nacos 内部固定为共享配置先导入、应用配置后导入。环境变量仍用于地址、Namespace 与凭据，
+并保持最高优先级。真实凭据不得写入 Nacos 配置正文。
 
 ## 环境变量
 
@@ -75,6 +78,8 @@ mvn -pl mars-cloud-upms-service -am clean package
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | 激活的 profile，默认 `local` |
 | `SERVER_PORT` | 服务端口，覆盖配置文件里的值 |
+| `NACOS_SERVER_ADDR` / `NACOS_NAMESPACE_ID` | Nacos 地址与环境 Namespace ID |
+| `NACOS_USERNAME` / `NACOS_PASSWORD` | Nacos 账号与密码 |
 | `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_PASSWORD` | 数据源 |
 | `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 
@@ -82,7 +87,8 @@ mvn -pl mars-cloud-upms-service -am clean package
 
 | profile | 用途 | 外部依赖 |
 | --- | --- | --- |
-| `local` | 本机开发 | **无**。各服务在 local 下关掉数据源与 Redis 的自动装配，克隆下来直接能起 |
+| `local`（UPMS） | 本机开发 | Nacos。数据源与 Redis 的自动装配保持关闭 |
+| `local`（sample） | 本机开发 | 无 |
 | 其他 | 部署环境 | 需要真实基础设施 |
 
 `mars.env.dev-profiles` 决定哪些 profile 被当作开发/测试环境——**它影响失败响应是否回带
@@ -97,6 +103,9 @@ mvn -pl mars-cloud-upms-service -am clean package
 | `GET <context-path>/actuator/health/liveness` | 存活探针 |
 | `GET <context-path>/actuator/info` | 应用信息 |
 | `GET <context-path>/actuator/prometheus` | 指标（Prometheus 格式，部分服务开放） |
+
+UPMS 的 `/actuator/info` 只增加 `nacos.configRevision`，用于观察动态刷新是否生效；
+它不暴露 Namespace、服务地址、配置正文或凭据。
 
 **注意聚合状态与探针可能不一致**：健康指示器的自动装配独立于连接的自动装配，
 只排除连接是不够的。若 `/actuator/health/readiness` 是 `UP` 而聚合 `/actuator/health`
@@ -157,7 +166,8 @@ spring:
 
 ## 启动顺序
 
-后续引入注册中心与网关后，**先起注册中心，再起网关，最后起业务服务**。
+当前 UPMS 已接入 Nacos，启动前必须先启动注册中心。引入网关后，顺序为
+**先起注册中心，再起网关，最后起业务服务**。
 网关先于注册中心启动时服务发现可能失败——这一条已列入网关相关工作项的验收条件，
 不是「理论上可能」。
 
@@ -165,6 +175,7 @@ spring:
 
 - [ ] 生产 profile **不在** `mars.env.dev-profiles` 里（否则失败响应会回带调试详情）
 - [ ] 数据库、Redis 等连接参数全部来自环境变量，配置文件里没有硬编码
+- [ ] Nacos 地址、Namespace 与凭据来自环境变量，配置正文没有明文凭据
 - [ ] actuator 暴露面已收窄，Swagger 已按需关闭
 - [ ] `SERVER_PORT` 与编排/网关配置一致
 - [ ] 已配置优雅停机与足够的终止宽限期

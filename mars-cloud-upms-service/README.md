@@ -6,6 +6,7 @@
 - 端口：`8102`；context path：`/upms`
 - 决策端点：`POST /upms/v1/decision`
 - 健康检查：`GET /upms/actuator/health`
+- Nacos 配置版本：`GET /upms/actuator/info`
 - 错误码区间：`65000–65999`（框架权威分配表里的 `upms-service` 区段）
 
 ## 响应契约
@@ -34,12 +35,19 @@ curl -X POST http://127.0.0.1:8102/upms/v1/decision \
 ## 本地启动
 
 ```bash
-./run-local.sh          # 显式加载 .env（若有），再以 local profile 启动
+cp ../.env.example .env # 填写本机 Nacos Namespace 与账号
+./run-local.sh          # 显式加载 .env，再以 local profile 启动
 ```
 
-`local` profile 的授权真相来源是**内存快照**，不是外部数据库或 Redis：
+先启动 Nacos，并在同一 Namespace 下准备：
 
-- 关掉数据源与 Redis 的自动装配（连同它们的健康指示器），因此**无需任何外部依赖**即可启动
+- `COMMON/shared-common.yaml`
+- `DEFAULT_GROUP/mars-cloud-upms-service.yaml`
+
+`local` profile 的授权真相来源仍是**内存快照**，不是外部数据库或 Redis：
+
+- 关掉数据源与 Redis 的自动装配（连同它们的健康指示器）
+- 从 Nacos 加载共享配置与应用配置，并注册 `mars-cloud-upms-service`
 - 启动后发布一份**开发种子快照**（`mars.upms.local-fixture.enabled`，默认打开），
   种子里 `local-admin` 持有 `demo` 平台的全部能力
 
@@ -54,6 +62,8 @@ curl -X POST http://127.0.0.1:8102/upms/v1/decision \
 | --- | --- | --- | --- |
 | 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、端口、context path、i18n、错误码区间声明 |
 | local profile | `src/main/resources/config/application-local.yml` | ✅ | **仅**行为开关：自动装配排除项、时区、种子快照开关。**刻意不含任何连接信息** |
+| Nacos 共享配置 | `COMMON/shared-common.yaml` | ❌ | 跨服务的非敏感动态默认值 |
+| Nacos 应用配置 | `DEFAULT_GROUP/mars-cloud-upms-service.yaml` | ❌ | UPMS 的非敏感动态覆盖值 |
 | 环境取值 | 环境变量（开发时用 `.env` 承载） | ❌ `.env` 忽略；[`.env.example`](../.env.example) 是模板 | 地址、端口、库名、口令 |
 
 `application-local.yml` 之所以能进版本库，是因为它**不含任何环境相关的取值**——
@@ -77,10 +87,26 @@ java -jar target/mars-cloud-upms-service.jar
 ```
 
 `.env` 不进版本库（见 [`.gitignore`](../.gitignore)）；`.env.example` 只列变量名与说明，可安全提交。
-local profile 下**不填任何值也能启动**——连接参数只有在切到别的 profile 时才需要。
+local profile 下必须填写 `NACOS_NAMESPACE_ID`、`NACOS_USERNAME` 与 `NACOS_PASSWORD`。
+真实凭据不写入 Nacos 配置正文。
+
+### 动态刷新怎么观察
+
+应用配置可放一个非敏感版本标记：
+
+```yaml
+mars:
+  upms:
+    nacos:
+      config-revision: revision-1
+```
+
+修改并发布后，请求 `/upms/actuator/info`。`nacos.configRevision` 应在进程不重启的情况下更新。
+该端点只暴露版本标记，不暴露 Namespace、地址、配置正文或凭据。
 
 ## 依赖边界
 
-- 依赖框架仓的 `mars-cloud-mvc-spring-boot-starter` 与 `mars-cloud-mysql`，**不直接依赖**框架的 `common` 模块
+- 依赖框架仓的 `mars-cloud-nacos-spring-boot-starter`、`mars-cloud-mvc-spring-boot-starter`
+  与 `mars-cloud-mysql`，**不直接依赖**框架的 `common` 模块
   （信封与错误码契约由 starter 传递进来）
 - 与其他服务之间**不加编译期依赖**，只走 HTTP
