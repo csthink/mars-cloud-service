@@ -90,7 +90,8 @@
 
 服务之间的调用**绕过网关**，因此每个服务都要自己完成鉴权，网关只是第一道。
 Servlet 服务的同步读调用使用 `mars-cloud-feign-spring-boot-starter`：调用方只写服务名，
-由 Nacos 与 LoadBalancer 选实例；调用方身份、租户与 `traceparent` 由框架统一传播。
+由 Nacos 与 LoadBalancer 选实例；调用方身份与租户由框架统一传播。应用提供
+Tracer 与 ObservationRegistry 时，Micrometer 自动传播 W3C `traceparent`。
 下游失败必须翻译为调用方自己的错误码，不透传下游 message 或原始响应体。
 
 Feign 自身不重试。LoadBalancer 只允许 GET 换下一实例重试一次，POST 等写请求不重试。

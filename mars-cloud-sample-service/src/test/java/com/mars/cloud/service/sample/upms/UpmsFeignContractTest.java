@@ -88,6 +88,26 @@ class UpmsFeignContractTest {
                 });
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "{}",
+            "{\"decision\":\"unexpected\",\"reason_code\":\"granted\",\"decision_id\":\"id-1\"}",
+            "{\"decision\":\"allow\",\"reason_code\":\"\",\"decision_id\":\"id-1\"}",
+            "{\"decision\":\"deny\",\"reason_code\":\"denied\"}",
+            "{\"decision\":{\"private\":\"detail\"},\"reason_code\":\"granted\",\"decision_id\":\"id-1\"}"
+    })
+    void invalidDecisionResponseMapsToSampleError(String result) {
+        FAKE_UPMS.respond(200, "{\"success\":true,\"result\":" + result + "}");
+        assertThatThrownBy(() -> adapter.decide(new SampleDecisionRequest("view", "resource")))
+                .isInstanceOfSatisfying(HttpException.class, failure -> {
+                    assertThat(failure.getHttpStatusCode()).isEqualTo(502);
+                    assertThat(failure.getErrCode()).isEqualTo(66103);
+                    assertThat(failure).hasMessageNotContaining("detail");
+                    assertThat(failure.getCause()).isNull();
+                });
+        assertThat(CallerContextHolder.current()).isEmpty();
+    }
+
     private record CapturedRequest(
             String method,
             String path,

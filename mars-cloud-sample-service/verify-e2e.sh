@@ -9,8 +9,6 @@ set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
 JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
-PORT="${SAMPLE_PORT:-8103}"
-BASE="http://127.0.0.1:${PORT}/sample"
 LOG="$(mktemp -t sample-e2e)"
 JVM_FLAGS=(--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED)
 
@@ -48,6 +46,8 @@ if [ -f "$MODULE_DIR/.env" ]; then
   . "$MODULE_DIR/.env"
   set +a
 fi
+PORT="${SAMPLE_PORT:-8103}"
+BASE="http://127.0.0.1:${PORT}/sample"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
@@ -61,6 +61,15 @@ if curl -fsS "$BASE/actuator/health" >/dev/null 2>&1; then
   echo "本脚本需要自己启动实例，请先停掉它（例如 Ctrl-C），或用 SAMPLE_PORT 换一个端口。"
   exit 2
 fi
+
+# 拒绝任何已占用端口，避免误验已有进程。
+python3 - "$PORT" <<'PY'
+import socket, sys
+for port in sys.argv[1:]:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", int(port)))
+PY
+[ "$?" -eq 0 ] || exit 2
 
 cleanup() {
   if [ -n "${PID:-}" ] && kill -0 "$PID" 2>/dev/null; then

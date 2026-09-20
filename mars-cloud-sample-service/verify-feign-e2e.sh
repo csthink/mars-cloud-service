@@ -11,10 +11,6 @@ MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_DIR="$(cd "$MODULE_DIR/.." && pwd)"
 SAMPLE_JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
 UPMS_JAR="$SERVICE_DIR/mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
-SAMPLE_PORT="${SAMPLE_PORT:-8203}"
-UPMS_PORT="${UPMS_PORT:-8202}"
-SAMPLE="http://127.0.0.1:${SAMPLE_PORT}/sample"
-UPMS="http://127.0.0.1:${UPMS_PORT}/upms"
 SAMPLE_LOG="$(mktemp -t sample-feign-e2e)"
 UPMS_LOG="$(mktemp -t upms-feign-e2e)"
 DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-90}"
@@ -70,6 +66,10 @@ if [ -f "$MODULE_DIR/.env" ]; then
   . "$MODULE_DIR/.env"
   set +a
 fi
+SAMPLE_PORT="${SAMPLE_PORT:-8203}"
+UPMS_PORT="${UPMS_PORT:-8202}"
+SAMPLE="http://127.0.0.1:${SAMPLE_PORT}/sample"
+UPMS="http://127.0.0.1:${UPMS_PORT}/upms"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
@@ -83,8 +83,17 @@ for probe in "$SAMPLE/actuator/health" "$UPMS/actuator/health"; do
   fi
 done
 
+# 拒绝任何已占用端口，避免误验已有进程。
+python3 - "$SAMPLE_PORT" "$UPMS_PORT" <<'PY'
+import socket, sys
+for port in sys.argv[1:]:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", int(port)))
+PY
+[ "$?" -eq 0 ] || exit 2
+
 cleanup() {
-  for pid in "${SAMPLE_PID:-}" "${UPMS_PID:-}"; do
+  for pid in "${SAMPLE_PID:-}" "${UPMS_PID:-}" "${PROXY_PID:-}"; do
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null
       wait "$pid" 2>/dev/null
@@ -93,8 +102,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+OBSERVATION_DIR="$(mktemp -d)"
+python3 "$MODULE_DIR/scripts/verify-upms-proxy.py" "$UPMS_PORT" "$OBSERVATION_DIR" &
+PROXY_PID=$!
+for _ in $(seq 1 50); do
+  [ -s "$OBSERVATION_DIR/port" ] && break
+  kill -0 "$PROXY_PID" 2>/dev/null || { echo "观测代理启动失败"; exit 1; }
+  sleep 0.1
+done
+[ -s "$OBSERVATION_DIR/port" ] || { echo "观测代理未就绪"; exit 1; }
+PROXY_PORT="$(cat "$OBSERVATION_DIR/port")"
+
 echo "① 启动 UPMS（端口 $UPMS_PORT，日志 $UPMS_LOG）"
-SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$UPMS_LOG" 2>&1 &
+SERVER_PORT="$UPMS_PORT" SPRING_CLOUD_NACOS_DISCOVERY_IP=127.0.0.1 \
+SPRING_CLOUD_NACOS_DISCOVERY_PORT="$PROXY_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$UPMS_LOG" 2>&1 &
 UPMS_PID=$!
 if ! elapsed=$(wait_until_ok "$UPMS/actuator/health" 90); then
   echo "UPMS 未在 90 秒内就绪，日志末尾："; tail -30 "$UPMS_LOG"; exit 1
@@ -129,10 +150,29 @@ contains "返回 UPMS decision" '"decision":' "$body"
 contains "返回 UPMS decision_id" '"decision_id":' "$body"
 
 echo
-echo "④ 停止 UPMS 后，sample 映射为 HTTP 503 + 66104"
+echo "④ 观测真实 UPMS 调用的三个内部身份头"
+if python3 - "$OBSERVATION_DIR/headers.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+actual = json.loads(p.read_text()) if p.exists() else None
+expected = {"X-Mars-Subject": ["caller-allow"], "X-Mars-Client-Id": ["mars-cloud-sample-service"], "X-Mars-Tenant-Id": ["default"]}
+sys.exit(0 if actual == expected else 1)
+PY
+then
+  echo "  ok   身份头已随成功请求转发到真实 UPMS"
+  pass=$((pass + 1))
+else
+  echo "  FAIL 身份头未按约定转发到真实 UPMS"
+  fail=$((fail + 1))
+fi
+
+echo "⑤ 停止 UPMS 后，sample 映射为 HTTP 503 + 66104"
 kill "$UPMS_PID" 2>/dev/null
 wait "$UPMS_PID" 2>/dev/null
 UPMS_PID=""
+kill "$PROXY_PID" 2>/dev/null
+wait "$PROXY_PID" 2>/dev/null
+PROXY_PID=""
 elapsed=0
 while [ "$elapsed" -lt "$DISCOVERY_TIMEOUT" ]; do
   body=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$SAMPLE/v1/upms/decision" \

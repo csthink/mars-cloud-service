@@ -54,7 +54,8 @@ curl -s $B/v1/orders/1
 ./verify-e2e.sh
 ```
 
-验证 sample 经 Nacos 服务名调用 UPMS，以及 UPMS 停止后的失败映射：
+验证 sample 经 Nacos 服务名调用 UPMS、三个内部身份头的传播，以及 UPMS 停止后的失败映射。
+脚本需要 Python 3，临时代理仅监听本机并记录三个固定演示身份头；不记录完整请求或凭据：
 
 ```bash
 ./verify-feign-e2e.sh

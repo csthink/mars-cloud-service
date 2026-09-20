@@ -2,7 +2,7 @@ spring:
   application:
     name: mars-cloud-sample-service
   profiles:
-    # 默认 local：克隆下来直接能起，不必先准备任何外部依赖。
+    # 默认 local：启动前准备 Nacos Namespace 与配置。
     active: ${SPRING_PROFILES_ACTIVE:local}
   messages:
     # 必需：缺这一行，错误文案会退化成裸错误码

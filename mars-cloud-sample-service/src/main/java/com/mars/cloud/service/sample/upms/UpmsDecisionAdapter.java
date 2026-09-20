@@ -27,7 +27,10 @@ public final class UpmsDecisionAdapter {
         try (CallerContextHolder.Scope ignored = CallerContextHolder.open(DEMO_CALLER)) {
             UnifyResponse<UpmsDecisionResult> response = client.decide(new UpmsDecisionRequest(
                     DEMO_CALLER.subject(), request.action(), request.resource()));
-            if (response == null || response.getResult() == null) {
+            if (response == null || response.getResult() == null
+                    || !("allow".equals(response.getResult().decision()) || "deny".equals(response.getResult().decision()))
+                    || response.getResult().reasonCode() == null || response.getResult().reasonCode().isBlank()
+                    || response.getResult().decisionId() == null || response.getResult().decisionId().isBlank()) {
                 throw new HttpException(
                         HttpStatus.BAD_GATEWAY.value(), SampleErrorCode.UPMS_RESPONSE_INVALID);
             }
