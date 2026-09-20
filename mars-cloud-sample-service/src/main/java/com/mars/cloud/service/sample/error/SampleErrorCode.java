@@ -18,7 +18,13 @@ public enum SampleErrorCode implements ErrorCode {
     RESOURCE_NOT_FOUND(66101),
 
     /** 业务规则拒绝，映射为 HTTP 200 + {@code success:false}。 */
-    OUT_OF_STOCK(66102);
+    OUT_OF_STOCK(66102),
+
+    /** UPMS 返回失败信封、非预期状态或无效响应。 */
+    UPMS_RESPONSE_INVALID(66103),
+
+    /** UPMS 无实例、连接失败或超时。 */
+    UPMS_UNAVAILABLE(66104);
 
     private final int code;
 

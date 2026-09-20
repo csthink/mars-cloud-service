@@ -1,13 +1,17 @@
 # mars-cloud-sample-service
 
-**框架使用示例**：一个最小的 mars-cloud 服务，演示统一响应信封、错误码区间与 i18n 该怎么用。
+**框架使用示例**：演示统一响应信封、错误码区间、i18n，以及经 Nacos 服务发现调用 UPMS。
 
 这不是业务服务，而是**可运行的文档**——它参与构建与测试，所以文档里写的每一条行为都有测试钉住，
 不会随框架演进而悄悄失效。
 
 ## 先跑起来
 
-需要 **JDK 25** 与 Maven。
+需要 **JDK 25**、Maven 与本机 Nacos。Nacos Namespace 中要有：
+
+- `COMMON/shared-common.yaml`
+- `DEFAULT_GROUP/mars-cloud-sample-service.yaml`
+- 调用 UPMS 时还需要 `DEFAULT_GROUP/mars-cloud-upms-service.yaml`
 
 本项目的两个仓是**平级目录**——下面的命令用 `../mars-cloud-framework` 引用框架仓，
 所以请把两个仓克隆到同一个父目录下：
@@ -27,7 +31,7 @@ cd ../mars-cloud-framework && mvn clean install
 # 2) 构建本示例
 cd ../mars-cloud-service && mvn -pl mars-cloud-sample-service -am package
 
-# 3) 启动（默认 local profile，无需任何外部依赖）
+# 3) 准备 .env 后启动（默认 local profile）
 cd mars-cloud-sample-service && ./run-local.sh
 ```
 
@@ -48,6 +52,12 @@ curl -s $B/v1/orders/1
 ```bash
 # 先停掉上面手动启动的实例（Ctrl-C），否则端口被占，脚本会拒绝运行
 ./verify-e2e.sh
+```
+
+验证 sample 经 Nacos 服务名调用 UPMS，以及 UPMS 停止后的失败映射：
+
+```bash
+./verify-feign-e2e.sh
 ```
 
 上面的 `curl` 验证需要**另开一个终端**、并保持服务进程运行。
@@ -143,6 +153,20 @@ curl -s -H 'Accept-Language: en-US' $B/v1/orders/missing
 
 见下方「错误码与国际化的接线」。
 
+### 6. 经服务名调用 UPMS
+
+sample 不依赖 UPMS 模块，只在本模块声明 Feign 接口与本地 DTO：
+
+```bash
+curl -s -X POST $B/v1/upms/decision \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"view","resource":"demo:view:domain:kubernetes-ops"}'
+```
+
+starter 会经 Nacos 选择 `mars-cloud-upms-service` 实例，并传播服务端建立的调用方身份。
+UPMS 返回 4xx 或无效响应时，sample 返回自己的 `66103`；无实例、连接失败或超时时返回
+HTTP 503 + `66104`。下游 message 不会进入 sample 响应。
+
 ## 错误码与国际化的接线
 
 三处要配套，缺一处就会在启动期或运行期出问题：
@@ -207,6 +231,7 @@ spring:
 | --- | --- | --- | --- |
 | 默认配置 | `config/application.yml` | ✅ | 应用名、端口、context path、i18n、错误码区间声明 |
 | profile 覆盖 | `config/application-local.yml` | ✅ | **仅**行为开关；**不含任何 host / 端口 / 库名 / 口令** |
+| Nacos 动态配置 | 环境 Namespace | ❌ | 共享默认值与 sample 应用覆盖值 |
 | 环境取值 | 环境变量（开发时用 `.env` 承载） | ❌ | 地址、端口、口令 |
 
 `application-local.yml` 能进版本库，是因为它对每个人每台机器都是同一份；
@@ -224,6 +249,11 @@ src/main/java/com/mars/cloud/service/sample/
 ├── error/
 │   ├── SampleErrorCode.java            # 错误码定义
 │   └── SampleErrorCodeRegistrar.java   # 注册给框架（启动期校验用）
+├── upms/
+│   ├── UpmsDecisionClient.java          # 只写服务名的 Feign 接口
+│   ├── UpmsDecisionAdapter.java         # 身份上下文、信封解包与领域边界
+│   ├── SampleUpmsFailureMapper.java      # 下游失败翻译为 sample 错误码
+│   └── *Request.java / *Result.java     # sample 自己维护的 HTTP 协议 DTO
 └── web/
     ├── OrderController.java            # 示例端点
     └── CreateOrderRequest.java         # 带校验注解的请求 DTO
@@ -234,8 +264,8 @@ src/main/java/com/mars/cloud/service/sample/
 
 ## 依赖边界
 
-本模块依赖框架仓的 `mars-cloud-mvc-spring-boot-starter`，由它带入统一响应、异常映射、
-错误码校验、i18n、请求上下文、接口文档与 Bean Validation。Web 运行时由服务自己提供。
+本模块依赖框架仓的 mvc、Nacos 与 Feign starter。它们分别提供 Web 横切能力、注册配置与
+阻塞式服务调用契约。Web 运行时由服务自己提供。
 
 服务之间**不加编译期依赖**，只走 HTTP 调用。
 

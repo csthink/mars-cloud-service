@@ -2,6 +2,9 @@ package com.mars.cloud.service.sample;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+
+import com.mars.cloud.service.sample.upms.UpmsDecisionClient;
 
 /**
  * 框架使用示例的入口。
@@ -10,6 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 并且它自己参与构建与测试，所以文档不会随框架演进而失效。
  */
 @SpringBootApplication
+@EnableFeignClients(clients = UpmsDecisionClient.class)
 public class SampleApplication {
 
     public static void main(String[] args) {

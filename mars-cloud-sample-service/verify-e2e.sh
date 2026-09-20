@@ -3,7 +3,7 @@
 # 示例服务的端到端验收：以**真进程**（java -jar）启动，逐条核对文档承诺的行为。
 #
 # 与单元测试的分工：MockMvc 测试验证契约，本脚本验证「打包出来的 jar 真能这样跑」——
-# 包括 profile 默认真空、actuator 可达、java -jar 不读 .env 这些只有真进程才暴露的事实。
+# 包括 actuator、信封与 i18n 这些只有真进程才暴露的事实。
 #
 set -uo pipefail
 
@@ -12,6 +12,7 @@ JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
 PORT="${SAMPLE_PORT:-8103}"
 BASE="http://127.0.0.1:${PORT}/sample"
 LOG="$(mktemp -t sample-e2e)"
+JVM_FLAGS=(--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED)
 
 pass=0
 fail=0
@@ -40,6 +41,19 @@ if [ ! -f "$JAR" ]; then
   exit 2
 fi
 
+if [ -f "$MODULE_DIR/.env" ]; then
+  echo "加载 $MODULE_DIR/.env"
+  set -a
+  # shellcheck disable=SC1091
+  . "$MODULE_DIR/.env"
+  set +a
+fi
+export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
+if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
+  echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
+  exit 2
+fi
+
 # 端口必须空闲：否则本脚本起不来自己的实例，健康检查却会打到**已在跑的旧实例**上，
 # 于是所有断言都「通过」而其实验的是别的进程——这种假绿比失败更危险。
 if curl -fsS "$BASE/actuator/health" >/dev/null 2>&1; then
@@ -57,7 +71,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "启动 $JAR（端口 $PORT，日志 $LOG）"
-java -jar "$JAR" >"$LOG" 2>&1 &
+SERVER_PORT="$PORT" java "${JVM_FLAGS[@]}" -jar "$JAR" >"$LOG" 2>&1 &
 PID=$!
 
 echo "等待健康检查通过..."

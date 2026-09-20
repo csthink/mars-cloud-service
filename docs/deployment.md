@@ -39,11 +39,11 @@ mvn -pl mars-cloud-upms-service -am clean package
 | --- | --- | --- |
 | `mars-cloud-gateway` | `java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-gateway.jar` | `cd mars-cloud-gateway && ./run-local.sh` |
 | `mars-cloud-upms-service` | `java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-upms-service.jar` | `cd mars-cloud-upms-service && ./run-local.sh` |
-| `mars-cloud-sample-service` | `java -jar target/mars-cloud-sample-service.jar` | `cd mars-cloud-sample-service && ./run-local.sh` |
+| `mars-cloud-sample-service` | `java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-sample-service.jar` | `cd mars-cloud-sample-service && ./run-local.sh` |
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
-网关与 UPMS 需要其中的 Nacos Namespace 与账号；sample service 不需要 Nacos 参数。
-网关与 UPMS 的启动命令多出的 JVM 参数见下一节。
+网关、UPMS 与 sample 都需要其中的 Nacos Namespace 与账号。
+三个服务启动命令中多出的 JVM 参数见下一节。
 
 > **`java -jar` 不会读 `.env`。** Spring Boot 本身没有 `.env` 支持——应用读的是
 > **环境变量**；`mvn spring-boot:run`（即 `run-local.sh`）只是恰好会加载模块根目录的
@@ -52,7 +52,7 @@ mvn -pl mars-cloud-upms-service -am clean package
 
 ## JVM 参数
 
-接入 Nacos 的服务（当前是网关与 UPMS）在 JDK 24 及以上启动时必须带：
+接入 Nacos 的服务（当前是网关、UPMS 与 sample）在 JDK 24 及以上启动时必须带：
 
 ```
 --sun-misc-unsafe-memory-access=allow
@@ -86,8 +86,6 @@ Linux 的 epoll）还必须带：
 | IDE 直接运行主类 | IDE 不经过 Maven 插件，需在运行配置的 VM options 里自行加上 |
 | 测试 JVM | 框架 BOM 统一给 surefire 的 `argLine` 配置 `--enable-native-access=ALL-UNNAMED`（网关的契约测试会真的发起 HTTP 调用）。Unsafe 那条测试 JVM 不需要：测试明确离线（见「Profile 语义」），Nacos 客户端不会被调用 |
 | Maven 进程本身（编译期） | 仓根 `.mvn/jvm.config`。这一处针对的是 Lombok 在 JDK 24 及以上编译期的同一条 Unsafe 警告，与 Nacos 无关；它只作用于 Maven 进程 |
-
-不接入 Nacos 的服务（当前是 sample service）不需要 Unsafe 那条；加上也无害。
 
 ## 配置来源与优先级
 
@@ -130,7 +128,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | --- | --- | --- |
 | `local`（网关） | 本机开发 | Nacos。路由目标不必先起来 |
 | `local`（UPMS） | 本机开发 | Nacos。数据源与 Redis 的自动装配保持关闭 |
-| `local`（sample） | 本机开发 | 无 |
+| `local`（sample） | 本机开发 | Nacos。调用 UPMS 的端点还需要 UPMS 实例 |
 | 其他 | 部署环境 | 需要真实基础设施 |
 
 `mars.env.dev-profiles` 决定哪些 profile 被当作开发/测试环境——**它影响失败响应是否回带
@@ -209,12 +207,15 @@ spring:
 
 ## 启动顺序
 
-网关与 UPMS 都接入 Nacos，启动前必须先启动注册中心（两者对 Nacos 的导入都不是 `optional:`，
+网关、UPMS 与 sample 都接入 Nacos，启动前必须先启动注册中心（三者对 Nacos 的导入都不是 `optional:`，
 注册中心不可用时启动失败）。
 
 **网关与业务服务之间没有顺序要求**：网关先起时，目标服务没有实例的请求返回信封式 503
 （`63002`），业务服务上线后网关自动发现，不需要重启。这条由网关的 `verify-e2e.sh`
 以真进程按「先网关、后 UPMS」的顺序验证。
+
+sample 到 UPMS 同样只经服务名调用。`mars-cloud-sample-service/verify-feign-e2e.sh` 在隔离端口
+启动两个真进程，验证调用成功；随后停止 UPMS，验证 sample 返回 HTTP 503 与自己的错误码 `66104`。
 
 ## 上线前检查清单
 

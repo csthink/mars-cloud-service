@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.util.List;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>断言按 **key** 做，不做字符串匹配：注释里出现 "password" 或示例写法都不算违规。
  */
 @SpringBootTest
+@ActiveProfiles({"local", "test"})
 class LocalConfigHygieneTest {
 
     @Autowired

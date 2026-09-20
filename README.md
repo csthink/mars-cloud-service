@@ -62,11 +62,17 @@ mvn -pl mars-cloud-upms-service -am test
 [docs/services.md](docs/services.md)。
 
 **想先看看怎么写一个服务**：`mars-cloud-sample-service` 是最小可运行示例，
-只依赖一个 starter，无数据库、无 Redis：
+无数据库、无 Redis，并演示经 Nacos 服务名调用 UPMS：
 
 ```bash
 mvn -pl mars-cloud-sample-service -am package
 cd mars-cloud-sample-service && ./run-local.sh    # 端口 8103，context path /sample
+```
+
+sample 与 UPMS 的真进程调用验收使用隔离端口 8203 / 8202：
+
+```bash
+cd mars-cloud-sample-service && ./verify-feign-e2e.sh
 ```
 
 **想从入口走一遍**：先起网关、再起 UPMS，经网关访问 UPMS（需要本机 Nacos，见各模块 README）：

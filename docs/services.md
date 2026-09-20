@@ -57,8 +57,11 @@
 
 - 端点 `GET /sample/v1/orders/{id}`、`POST /sample/v1/orders`、`GET /sample/v1/orders/missing`
   （最后一个是**故意返回 404 的演示端点**，用于演示异常映射，不是查询接口）
-- 只依赖 `mars-cloud-mvc-spring-boot-starter`，**无数据库、无 Redis**，克隆下来直接能起
+- 端点 `POST /sample/v1/upms/decision` 经 Nacos 服务名调用 UPMS，不经过网关
+- 依赖 mvc、Nacos 与 Feign starter，**无数据库、无 Redis**
+- 对 UPMS 只声明本地 Feign 接口与本地 DTO，不增加 service 之间的 Maven 依赖
 - 自带端到端验收脚本 `verify-e2e.sh`
+- 自带服务调用验收脚本 `verify-feign-e2e.sh`，验证 UPMS 可用和停止后的两条路径
 - 细节见 [模块 README](../mars-cloud-sample-service/README.md)
 
 ## 两条不可越过的边界
@@ -86,4 +89,9 @@
 ## 服务间调用
 
 服务之间的调用**绕过网关**，因此每个服务都要自己完成鉴权，网关只是第一道。
-调用时需要透传的上下文（链路标识、调用方身份、租户）由框架的调用组件统一处理。
+Servlet 服务的同步读调用使用 `mars-cloud-feign-spring-boot-starter`：调用方只写服务名，
+由 Nacos 与 LoadBalancer 选实例；调用方身份、租户与 `traceparent` 由框架统一传播。
+下游失败必须翻译为调用方自己的错误码，不透传下游 message 或原始响应体。
+
+Feign 自身不重试。LoadBalancer 只允许 GET 换下一实例重试一次，POST 等写请求不重试。
+响应式服务不使用 Feign，改用由 `WebClient` 驱动的 Spring HTTP Service Client。

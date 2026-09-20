@@ -29,6 +29,16 @@
             <artifactId>mars-cloud-mvc-spring-boot-starter</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.mars.cloud</groupId>
+            <artifactId>mars-cloud-nacos-spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mars.cloud</groupId>
+            <artifactId>mars-cloud-feign-spring-boot-starter</artifactId>
+        </dependency>
+
         <!-- 业务服务自己提供 Web 运行时（starter 刻意不向下游传递它） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
