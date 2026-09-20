@@ -10,6 +10,9 @@
 #
 # 显式加载而不是只依赖 Maven 的隐式行为，是为了让「值从哪来」一目了然。
 #
+# 本脚本不传 JVM 参数：nacos-client 在 JDK 24+ 需要的 --sun-misc-unsafe-memory-access=allow
+# 由框架 BOM 统一给 spring-boot:run 配置（见 ../docs/deployment.md 的「JVM 参数」一节）。
+#
 set -euo pipefail
 
 cd "$(dirname "$0")"

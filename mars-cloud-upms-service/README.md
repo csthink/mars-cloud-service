@@ -83,8 +83,13 @@ cp ../../.env.example .env && ./run-local.sh
 # 方式二：java -jar —— 不会自动读，需先导出
 cp ../../.env.example .env
 set -a && . ./.env && set +a
-java -jar target/mars-cloud-upms-service.jar
+java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-upms-service.jar
 ```
+
+方式二多出的 `--sun-misc-unsafe-memory-access=allow` 是 JDK 24 及以上运行 nacos-client 3.1.1
+所需的 JVM 参数；方式一由框架 BOM 统一给 `spring-boot:run` 配好，容器由 `Dockerfile` 的
+`ENTRYPOINT` 带上。原因与各入口的固化位置见
+[`docs/deployment.md`](../docs/deployment.md) 的「JVM 参数」一节。
 
 `.env` 不进版本库（见 [`.gitignore`](../.gitignore)）；`.env.example` 只列变量名与说明，可安全提交。
 local profile 下必须填写 `NACOS_NAMESPACE_ID`、`NACOS_USERNAME` 与 `NACOS_PASSWORD`。
