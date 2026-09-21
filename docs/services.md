@@ -33,7 +33,8 @@
 授权（AuthZ）的**决策侧**（PDP）：
 
 - 输入 subject / action / resource，输出允许或拒绝
-- 端点 `POST /upms/v1/decision`；`deny` 是 HTTP 200 的成功决策，只有服务态错误才走非 200
+- 端点 `POST /upms/v1/decision`；已认证请求的 `caller_id` 必须等于令牌 subject。
+  `deny` 是 HTTP 200 的成功决策；认证或主体不符返回 401 / 403，服务错误使用对应的非 200 状态
 - 当前阶段：决策真相来源是**内存快照**，local profile 启动时发布一份开发种子快照；
   已接入 Nacos 注册中心与两层动态配置；权限数据与角色模型的持久化仍属后续阶段
 - 细节见 [模块 README](../mars-cloud-upms-service/README.md)

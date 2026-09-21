@@ -43,6 +43,9 @@ mvn -pl mars-cloud-upms-service -am clean package
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
 网关、UPMS 与 sample 都需要其中的 Nacos Namespace 与账号。
+sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否则通过 issuer 元数据发现。
+两服务的 audience 分别为自己的应用名；sample 调用 UPMS 时，访问令牌的 audience 必须同时包含两者。
+缺少认证配置时启动失败；健康探针允许匿名访问，业务接口需要合法 Bearer 令牌。
 三个服务启动命令中多出的 JVM 参数见下一节。
 
 > **`java -jar` 不会读 `.env`。** Spring Boot 本身没有 `.env` 支持——应用读的是
@@ -119,6 +122,8 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `SERVER_PORT` | 服务端口，覆盖配置文件里的值 |
 | `NACOS_SERVER_ADDR` / `NACOS_NAMESPACE_ID` | Nacos 地址与环境 Namespace ID |
 | `NACOS_USERNAME` / `NACOS_PASSWORD` | Nacos 账号与密码 |
+| `MARS_SECURITY_ISSUER_URI` | sample / UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
+| `MARS_SECURITY_JWK_SET_URI` | 可选的 JWKS 地址，仍校验 issuer；部署环境使用 HTTPS |
 | `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_PASSWORD` | 数据源 |
 | `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 
@@ -127,8 +132,8 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | profile | 用途 | 外部依赖 |
 | --- | --- | --- |
 | `local`（网关） | 本机开发 | Nacos。路由目标不必先起来 |
-| `local`（UPMS） | 本机开发 | Nacos。数据源与 Redis 的自动装配保持关闭 |
-| `local`（sample） | 本机开发 | Nacos。调用 UPMS 的端点还需要 UPMS 实例 |
+| `local`（UPMS） | 本机开发 | Nacos 与可信 JWT 签发方的公钥端点。数据源与 Redis 的自动装配保持关闭 |
+| `local`（sample） | 本机开发 | Nacos 与可信 JWT 签发方的公钥端点。调用 UPMS 的端点还需要 UPMS 实例 |
 | 其他 | 部署环境 | 需要真实基础设施 |
 
 `mars.env.dev-profiles` 决定哪些 profile 被当作开发/测试环境——**它影响失败响应是否回带
