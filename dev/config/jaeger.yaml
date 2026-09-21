@@ -1,4 +1,4 @@
-# Configuration for Jaeger 2.21, based on its Apache-2.0 Badger example.
+# Configuration for Jaeger 2.20, based on its Apache-2.0 Badger example.
 service:
   extensions: [jaeger_storage, jaeger_query, healthcheckv2]
   pipelines:
