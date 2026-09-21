@@ -273,7 +273,7 @@ class Environment:
 
     def prepare_volumes(self):
         # Compose creates volumes and labels; initialize only the new data directories.
-        self.compose('create', 'jaeger', 'loki', phase='create storage')
+        self.compose('create', 'jaeger', 'loki', 'rocketmq-broker', 'rocketmq-nameserver', phase='create storage')
         self.docker('run', '--rm', '--name', self.args.project + '-prepare-probe',
                     '--restart', 'no', '--cpus', '.5', '--memory', '512m', '--memory-swap', '512m',
                     '--pids-limit', '128', '--log-driver', 'json-file', '--log-opt', 'max-size=10m',
@@ -281,13 +281,14 @@ class Environment:
                     '-v', self.args.project + '_health-probe:/probe', self.image('busybox'),
                     'sh', '-c', 'cp /bin/busybox /probe/busybox && chmod 755 /probe/busybox',
                     phase='prepare health probe')
-        for service in ('jaeger', 'loki'):
-            volume = self.args.project + '_' + service + '-data'
+        for service, uid in {'jaeger-data': 10001, 'loki-data': 10001, 'broker-data': 3000,
+                             'broker-logs': 3000, 'nameserver-logs': 3000}.items():
+            volume = self.args.project + '_' + service
             self.docker('run', '--rm', '--name', self.args.project + '-prepare-' + service,
                         '--restart', 'no', '--cpus', '.5', '--memory', '512m', '--memory-swap', '512m',
                         '--pids-limit', '128', '--log-driver', 'json-file', '--log-opt', 'max-size=10m',
                         '--log-opt', 'max-file=3', '--label', OWNER_LABEL + '=' + self.owner,
-                        '-v', volume + ':/data', self.image('busybox'), 'chown', '10001:10001', '/data',
+                        '-v', volume + ':/data', self.image('busybox'), 'chown', str(uid) + ':' + str(uid), '/data',
                         phase='prepare ' + service + ' storage')
 
     def wait(self, services, timeout=420):
