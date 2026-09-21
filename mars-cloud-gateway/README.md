@@ -1,6 +1,6 @@
 # mars-cloud-gateway
 
-南北向的**唯一入口**：把外部请求路由到各业务服务。响应式栈（Spring Cloud Gateway + WebFlux）。
+系统外部请求的**统一入口**：把外部请求路由到各业务服务。响应式栈（Spring Cloud Gateway + WebFlux）。
 
 - 入口类：`com.mars.cloud.service.gateway.GatewayApplication`
 - 端口：`8100`；无 context path（路径原样转发给目标服务）

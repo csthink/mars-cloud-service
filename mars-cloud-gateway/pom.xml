@@ -16,7 +16,7 @@
     <packaging>jar</packaging>
 
     <name>mars-cloud-gateway</name>
-    <description>mars-cloud 网关：南北向唯一入口，路由到各业务服务（响应式栈）</description>
+    <description>mars-cloud 网关：系统外部请求的统一入口，路由到各业务服务（响应式栈）</description>
 
     <dependencies>
         <!--

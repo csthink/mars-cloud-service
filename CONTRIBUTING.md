@@ -41,7 +41,7 @@
 4. 接入统一响应（Servlet 栈引 mvc starter；响应式栈参照 `mars-cloud-gateway` 的 `web` 包，复用 `common` 的信封自行实现）
 5. 写模块自己的 `README.md`，并在 [docs/services.md](docs/services.md) 登记职责边界
 6. 补一条冒烟验证：健康检查可用、成功与失败路径都返回统一信封
-7. 在 `mars-cloud-gateway` 的路由表里加一条到本服务的路由（网关是南北向唯一入口，不自动暴露注册中心里的服务）
+7. 在 `mars-cloud-gateway` 的路由表里加一条到本服务的路由（系统外部请求统一经过 gateway，不自动暴露注册中心里的服务）
 
 第 4 步之前建议先看 `mars-cloud-sample-service`——它是最小的可运行示例，
 把信封、异常映射、错误码与 i18n 的接线完整演示了一遍，且自带端到端验收脚本。

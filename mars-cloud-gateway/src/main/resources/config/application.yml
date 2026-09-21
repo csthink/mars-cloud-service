@@ -14,7 +14,7 @@ spring:
     gateway:
       server:
         webflux:
-          # 路由显式声明，不开 discovery.locator：网关是南北向唯一入口，
+          # 路由显式声明，不开 discovery.locator：系统外部请求统一经过 gateway，
           # 注册中心里的每个服务不应自动暴露到公网。
           routes:
             # UPMS 自带 context path /upms，路径原样转发，不需要改写。
