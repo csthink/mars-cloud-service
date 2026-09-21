@@ -265,6 +265,11 @@ class Environment:
     def prepare_images(self):
         for key in self.images:
             platform = 'linux/amd64' if key == 'xxl-job-admin' else self.args.platform
+            installed = self.docker('image', 'inspect', self.image(key), check=False)
+            if installed.returncode == 0:
+                metadata = json.loads(installed.stdout)[0]
+                if metadata['Os'] + '/' + metadata['Architecture'] == platform:
+                    continue
             self.docker('pull', '--platform', platform, self.image(key), phase='pull ' + key, timeout=900)
         self.docker('build', '--platform', self.args.platform, '-t', 'mars-lab-jaeger:' + self.jaeger_build_id(),
                     '--build-arg', 'BUSYBOX_IMAGE=' + self.image('busybox'), '--build-arg',
