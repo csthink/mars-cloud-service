@@ -161,6 +161,26 @@ def verify_observability(e, marker):
     for uid in ('jaeger', 'loki'):
         body = request(grafana + '/api/datasources/uid/' + uid + '/health', headers=headers)
         require(body['status'] == 'OK', 'Grafana data source is not healthy: ' + uid)
+    queries = [
+        ({'queryType': '', 'query': trace},
+         {'traceID': trace, 'spanID': marker['span'], 'operationName': marker['id'], 'serviceName': 'local-verification'}),
+        ({'queryType': 'search', 'service': 'local-verification', 'operation': marker['id'], 'limit': 20},
+         {'traceID': trace, 'traceName': 'local-verification: ' + marker['id']}),
+    ]
+    for query, expected in queries:
+        result = request(grafana + '/api/ds/query', 'POST', headers=headers, json_body={
+            'from': str(marker['timestamp'] // 1000000 - 60000),
+            'to': str(marker['timestamp'] // 1000000 + 60000),
+            'queries': [{'refId': 'A', 'datasource': {'type': 'jaeger', 'uid': 'jaeger'},
+                         'maxDataPoints': 100, 'intervalMs': 1000, **query}]})['results']['A']
+        require(result.get('status') == 200 and not result.get('error'), 'Grafana trace query failed')
+        found = False
+        for frame in result.get('frames', []):
+            names = [field['name'] for field in frame['schema']['fields']]
+            for values in zip(*frame['data']['values']):
+                row = dict(zip(names, values))
+                found |= all(row.get(key) == value for key, value in expected.items())
+        require(found, 'Grafana query did not return the expected trace')
     try:
         dashboard = request(grafana + '/api/dashboards/uid/' + marker['id'], headers=headers)
     except HttpFailure as error:
