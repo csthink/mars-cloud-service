@@ -6,6 +6,9 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -196,6 +199,69 @@ class MessageClient(unittest.TestCase):
             backups = list(e.state.glob('mq-client-incomplete-*'))
             self.assertEqual(len(backups), 1)
             self.assertEqual((backups[0] / 'partial').read_text(), 'preserve')
+
+
+class SharedImage(unittest.TestCase):
+    def test_platform_is_part_of_derived_image_identity(self):
+        e = m.Environment(m.parser().parse_args(['up']))
+        e.args.platform = 'linux/arm64'
+        arm = e.jaeger_build_id()
+        e.args.platform = 'linux/amd64'
+        self.assertNotEqual(arm, e.jaeger_build_id())
+
+    def test_concurrent_environments_build_once_then_reuse(self):
+        with tempfile.TemporaryDirectory() as directory:
+            environments = [m.Environment(m.parser().parse_args(['up'])) for _ in range(2)]
+            image = None
+            builds = []
+            barrier = threading.Barrier(2)
+            def docker(*args, **kwargs):
+                nonlocal image
+                if args[0] == 'build':
+                    builds.append(args)
+                    time.sleep(0.1)
+                    image = {'Id': 'sha256:' + 'a' * 64, 'Os': 'linux', 'Architecture': environments[0].args.platform.split('/')[1],
+                             'Config': {'Labels': {'io.mars.middleware.jaeger-build': environments[0].jaeger_build_id()}}}
+                    return Mock(returncode=0, stdout='')
+                return Mock(returncode=0 if image else 1, stdout=json.dumps([image]) if image else '')
+            def prepare(e):
+                e.docker = docker
+                barrier.wait(timeout=5)
+                e.prepare_jaeger()
+            with patch.object(m, 'IMAGE_LOCK_ROOT', Path(directory)), ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(prepare, environments))
+                self.assertEqual(len(builds), 1)
+                environments[0].prepare_jaeger()
+                self.assertEqual(len(builds), 1)
+                image['Config']['Labels'] = {}
+                with self.assertRaises(m.Failure):
+                    environments[0].prepare_jaeger()
+                self.assertEqual(len(builds), 1)
+
+    def test_failed_build_releases_lock_and_can_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            e = m.Environment(m.parser().parse_args(['up']))
+            metadata = {'Id': 'sha256:' + 'b' * 64, 'Os': 'linux', 'Architecture': e.args.platform.split('/')[1],
+                        'Config': {'Labels': {'io.mars.middleware.jaeger-build': e.jaeger_build_id()}}}
+            e.docker = Mock(side_effect=[Mock(returncode=1), m.Failure('build failed'),
+                                        Mock(returncode=1), Mock(returncode=0),
+                                        Mock(returncode=0, stdout=json.dumps([metadata]))])
+            with patch.object(m, 'IMAGE_LOCK_ROOT', Path(directory)):
+                with self.assertRaises(m.Failure):
+                    e.prepare_jaeger()
+                e.prepare_jaeger()
+            self.assertEqual(sum(call.args[0] == 'build' for call in e.docker.call_args_list), 2)
+
+    def test_shared_build_lock_refuses_symbolic_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'target'
+            target.write_text('preserve')
+            lock = Path(directory) / ('mars-middleware-image-' + str(m.os.getuid()) + '-test.lock')
+            lock.symlink_to(target)
+            with patch.object(m, 'IMAGE_LOCK_ROOT', Path(directory)), self.assertRaises(OSError):
+                with m.image_build_lock('test'):
+                    pass
+            self.assertEqual(target.read_text(), 'preserve')
 
 
 if __name__ == '__main__':

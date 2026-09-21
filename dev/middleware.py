@@ -15,6 +15,7 @@ import secrets
 import shlex
 import socket
 import subprocess
+import stat
 import sys
 import time
 import uuid
@@ -27,6 +28,7 @@ BASE_PORTS = dict(nacos_console=8080, nacos_http=8848, nacos_grpc=9848,
 SERVICES = ('nacos', 'rocketmq-nameserver', 'rocketmq-broker', 'mysql', 'redis',
             'jaeger', 'loki', 'grafana', 'xxl-job-admin')
 OWNER_LABEL = 'io.mars.middleware.owner'
+IMAGE_LOCK_ROOT = Path('/tmp')
 
 
 class Failure(RuntimeError):
@@ -41,6 +43,27 @@ def protected_write(path, data, mode=0o600):
     with os.fdopen(fd, 'w') as stream:
         os.fchmod(stream.fileno(), mode)
         stream.write(data)
+
+
+@contextmanager
+def image_build_lock(build_id):
+    path = IMAGE_LOCK_ROOT / ('mars-middleware-image-' + str(os.getuid()) + '-' + build_id + '.lock')
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'a') as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1:
+            raise Failure('Invalid shared image build lock')
+        os.fchmod(stream.fileno(), 0o600)
+        deadline = time.monotonic() + 330
+        while True:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise Failure('Another operation still owns the image build lock') from None
+                time.sleep(0.05)
+        yield
 
 
 def validate(project, offset, bind, namespace, prefix, slots):
@@ -213,7 +236,7 @@ class Environment:
 
     def jaeger_build_id(self):
         data = (self.source / 'images/jaeger/Dockerfile').read_bytes()
-        data += (self.image('jaeger') + self.image('busybox')).encode()
+        data += (self.image('jaeger') + self.image('busybox') + self.args.platform).encode()
         return hashlib.sha256(data).hexdigest()[:24]
 
     def compose(self, *args, **kwargs):
@@ -271,10 +294,26 @@ class Environment:
                 if metadata['Os'] + '/' + metadata['Architecture'] == platform:
                     continue
             self.docker('pull', '--platform', platform, self.image(key), phase='pull ' + key, timeout=900)
-        self.docker('build', '--platform', self.args.platform, '-t', 'mars-lab-jaeger:' + self.jaeger_build_id(),
-                    '--build-arg', 'BUSYBOX_IMAGE=' + self.image('busybox'), '--build-arg',
-                    'JAEGER_IMAGE=' + self.image('jaeger'), str(self.source / 'images/jaeger'),
-                    phase='build Jaeger probe', timeout=300)
+        self.prepare_jaeger()
+
+    def prepare_jaeger(self):
+        build_id = self.jaeger_build_id()
+        tag = 'mars-lab-jaeger:' + build_id
+        label = 'io.mars.middleware.jaeger-build'
+        with image_build_lock(build_id):
+            installed = self.docker('image', 'inspect', tag, check=False)
+            if installed.returncode != 0:
+                self.docker('build', '--platform', self.args.platform, '-t', tag,
+                            '--label', label + '=' + build_id,
+                            '--build-arg', 'BUSYBOX_IMAGE=' + self.image('busybox'), '--build-arg',
+                            'JAEGER_IMAGE=' + self.image('jaeger'), str(self.source / 'images/jaeger'),
+                            phase='build Jaeger probe', timeout=300)
+                installed = self.docker('image', 'inspect', tag)
+            metadata = json.loads(installed.stdout)[0]
+            if (not re.fullmatch(r'sha256:[0-9a-f]{64}', metadata.get('Id', ''))
+                    or metadata['Os'] + '/' + metadata['Architecture'] != self.args.platform
+                    or (metadata['Config'].get('Labels') or {}).get(label) != build_id):
+                raise Failure('Existing Jaeger image does not match the platform and build inputs')
 
     def prepare_volumes(self):
         # Compose creates volumes and labels; initialize only the new data directories.

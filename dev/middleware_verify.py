@@ -43,6 +43,9 @@ def verify_limits(e, rows):
         expected_image = env[image_key]
         image_info = json.loads(e.docker('image', 'inspect', expected_image).stdout)[0]
         require(info['Image'] == image_info['Id'], 'Running image differs from the fixed image')
+        if row['service'] == 'jaeger':
+            require((image_info['Config'].get('Labels') or {}).get('io.mars.middleware.jaeger-build') == e.jaeger_build_id(),
+                    'Jaeger image build inputs differ')
         platform = 'linux/amd64' if row['service'] == 'xxl-job-admin' else e.args.platform
         require(image_info['Os'] + '/' + image_info['Architecture'] == platform, 'Running image platform differs')
         expected = definition[row['service']]

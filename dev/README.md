@@ -10,7 +10,7 @@ python3 dev/middleware.py export-env --slot 0
 python3 dev/middleware.py down
 ```
 
-`up` 拉取 `images.lock.json` 中的固定镜像，构建 Jaeger 健康探测镜像，并为不含 shell 的 Loki 挂载同一固定 BusyBox 探测程序，初始化并验证 Nacos、RocketMQ、MySQL、Redis、Jaeger、Loki、Grafana 与 xxl-job-admin。启动返回成功才表示实际读写探测通过。Java 消息探测在宿主机运行，使用 NameServer 返回的 Broker 地址。
+`up` 拉取 `images.lock.json` 中的固定镜像，构建 Jaeger 健康探测镜像，并为不含 shell 的 Loki 挂载同一固定 BusyBox 探测程序，初始化并验证 Nacos、RocketMQ、MySQL、Redis、Jaeger、Loki、Grafana 与 xxl-job-admin。启动返回成功才表示实际读写探测通过。Java 消息探测在宿主机运行，使用 NameServer 返回的 Broker 地址。Jaeger 派生镜像按构建输入和平台复用，同机同用户的并发构建由共享文件锁协调。
 
 默认项目名 `mars-lab`，端口为组件基础端口加 20000，全部发布到回环地址。Nacos Console 为 28080，HTTP 为 28848；Grafana 为 23000，Jaeger UI 为 36686，xxl-job-admin 为 28083。全部长期容器限制 CPU、内存、swap、线程数量和日志轮转，并设置 `restart: always`。Docker Desktop 在用户登录后启动时恢复容器；尚未登录时的可用性取决于宿主机服务管理方式。
 
