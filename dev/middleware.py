@@ -404,6 +404,7 @@ def main():
 
 
 if __name__ == '__main__':
+    sys.modules['middleware'] = sys.modules[__name__]
     try:
         main()
     except (Failure, ValueError, OSError, KeyError) as error:

@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import middleware as m
 import middleware_init as init
+import middleware_verify as verify
 
 
 class Parameters(unittest.TestCase):
@@ -137,6 +138,64 @@ class Initialization(unittest.TestCase):
         with patch.object(init, 'Nacos', return_value=api), self.assertRaises(m.Failure):
             init.initialize_nacos(e)
         self.assertTrue(all(call.args[0] == 'GET' for call in api.call.call_args_list))
+
+
+class MessageClient(unittest.TestCase):
+    def test_interrupted_copy_can_retry_and_detects_later_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            e = Mock()
+            e.state = Path(directory)
+            e.args.project = 'mars-lab'
+            e.image.return_value = 'example@sha256:fixed'
+            e.image_home.return_value = '/image'
+
+            def copy(*args, **kwargs):
+                destination = Path(args[2])
+                destination.mkdir()
+                for component in ('client', 'common', 'remoting'):
+                    (destination / ('rocketmq-' + component + '-5.3.2.jar')).write_bytes(b'complete')
+
+            def interrupt(*args, **kwargs):
+                copy(*args, **kwargs)
+                raise m.Failure('copy interrupted')
+
+            e.docker.side_effect = interrupt
+            with self.assertRaises(m.Failure):
+                verify.message_client(e)
+            self.assertFalse((e.state / 'mq-client').exists())
+            self.assertFalse(list(e.state.glob('mq-client-copy-*')))
+            e.docker.side_effect = copy
+            client = verify.message_client(e)
+            self.assertTrue((client / 'complete.json').is_file())
+            e.docker.reset_mock()
+            self.assertEqual(verify.message_client(e), client)
+            e.docker.assert_not_called()
+            (client / 'lib/rocketmq-client-5.3.2.jar').write_bytes(b'truncated')
+            with self.assertRaises(m.Failure):
+                verify.message_client(e)
+
+    def test_incomplete_legacy_copy_is_preserved_and_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            e = Mock()
+            e.state = Path(directory)
+            e.args.project = 'mars-lab'
+            e.image.return_value = 'example@sha256:fixed'
+            e.image_home.return_value = '/image'
+            old = e.state / 'mq-client'
+            old.mkdir()
+            (old / 'partial').write_text('preserve')
+
+            def copy(*args, **kwargs):
+                destination = Path(args[2])
+                destination.mkdir()
+                for component in ('client', 'common', 'remoting'):
+                    (destination / ('rocketmq-' + component + '-5.3.2.jar')).write_bytes(b'complete')
+
+            e.docker.side_effect = copy
+            self.assertTrue((verify.message_client(e) / 'complete.json').exists())
+            backups = list(e.state.glob('mq-client-incomplete-*'))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual((backups[0] / 'partial').read_text(), 'preserve')
 
 
 if __name__ == '__main__':

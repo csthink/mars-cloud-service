@@ -10,19 +10,39 @@ import org.apache.rocketmq.common.message.MessageQueue;
 public final class MessageProbe {
     public static void main(String[] args) throws Exception {
         String server = args[0], topic = args[1], value = args[2], group = args[3];
+        if (args[4].equals("grpc")) {
+            io.grpc.ManagedChannel channel = io.grpc.ManagedChannelBuilder.forTarget(server).usePlaintext().build();
+            try {
+                apache.rocketmq.v2.QueryRouteRequest request = apache.rocketmq.v2.QueryRouteRequest.newBuilder()
+                    .setTopic(apache.rocketmq.v2.Resource.newBuilder().setName(topic))
+                    .setEndpoints(apache.rocketmq.v2.Endpoints.newBuilder()
+                        .setScheme(apache.rocketmq.v2.AddressScheme.IPv4)
+                        .addAddresses(apache.rocketmq.v2.Address.newBuilder().setHost("127.0.0.1")
+                            .setPort(Integer.parseInt(server.substring(server.lastIndexOf(':') + 1)))))
+                    .build();
+                io.grpc.Metadata metadata = new io.grpc.Metadata();
+                metadata.put(io.grpc.Metadata.Key.of("x-mq-client-id", io.grpc.Metadata.ASCII_STRING_MARSHALLER), group);
+                apache.rocketmq.v2.QueryRouteResponse response = apache.rocketmq.v2.MessagingServiceGrpc
+                    .newBlockingStub(channel).withInterceptors(io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(metadata))
+                    .withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).queryRoute(request);
+                if (response.getStatus().getCode() != apache.rocketmq.v2.Code.OK)
+                    throw new IllegalStateException("Proxy gRPC rejected route query: " + response.getStatus().getCode());
+                if (response.getMessageQueuesCount() == 0) throw new IllegalStateException("Proxy gRPC route is empty");
+            } finally { channel.shutdownNow(); }
+            System.out.println("Proxy gRPC route query passed");
+            return;
+        }
         if (args[4].equals("proxy")) {
             org.apache.rocketmq.remoting.netty.NettyRemotingClient client =
                 new org.apache.rocketmq.remoting.netty.NettyRemotingClient(new org.apache.rocketmq.remoting.netty.NettyClientConfig());
             client.start();
             try {
-                org.apache.rocketmq.remoting.protocol.header.GetMaxOffsetRequestHeader header =
-                    new org.apache.rocketmq.remoting.protocol.header.GetMaxOffsetRequestHeader();
+                org.apache.rocketmq.remoting.protocol.header.namesrv.GetRouteInfoRequestHeader header =
+                    new org.apache.rocketmq.remoting.protocol.header.namesrv.GetRouteInfoRequestHeader();
                 header.setTopic(topic);
-                header.setQueueId(0);
-                header.setBrokerName("local-broker");
                 org.apache.rocketmq.remoting.protocol.RemotingCommand response = client.invokeSync(server,
                     org.apache.rocketmq.remoting.protocol.RemotingCommand.createRequestCommand(
-                        org.apache.rocketmq.remoting.protocol.RequestCode.GET_MAX_OFFSET, header), 10000);
+                        org.apache.rocketmq.remoting.protocol.RequestCode.GET_ROUTEINFO_BY_TOPIC, header), 10000);
                 if (response.getCode() != 0) throw new IllegalStateException("Proxy rejected protocol request: " + response.getCode());
             } finally { client.shutdown(); }
             System.out.println("Proxy remoting request passed");

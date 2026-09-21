@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -168,25 +169,50 @@ def mqadmin(e, *args):
                      *args, phase='RocketMQ administration')
 
 
+def message_client(e):
+    client = e.state / 'mq-client'
+    expected_image = e.image('rocketmq')
+    completion = client / 'complete.json'
+    if completion.exists():
+        manifest = json.loads(completion.read_text())
+        require(manifest['image'] == expected_image, 'Message client belongs to another image')
+        require(all((client / name).is_file() and hashlib.sha256((client / name).read_bytes()).hexdigest() == digest
+                    for name, digest in manifest['files'].items()), 'Copied message client files changed')
+    else:
+        if client.exists():
+            client.rename(e.state / ('mq-client-incomplete-' + str(time.time_ns())))
+        with tempfile.TemporaryDirectory(prefix='mq-client-copy-', dir=e.state) as temporary:
+            staging = Path(temporary) / 'client'
+            staging.mkdir()
+            e.docker('cp', e.args.project + '-rocketmq-broker-1:' + e.image_home('rocketmq') + '/rocketmq-5.3.2/lib',
+                     str(staging / 'lib'), phase='copy official message client')
+            for component in ('client', 'common', 'remoting'):
+                require(bool(list((staging / 'lib').glob('rocketmq-' + component + '-*.jar'))), 'Message client copy is incomplete')
+            files = {str(p.relative_to(staging)): hashlib.sha256(p.read_bytes()).hexdigest()
+                     for p in (staging / 'lib').glob('*.jar')}
+            protected_write(staging / 'complete.json', json.dumps({'image': expected_image, 'files': files}) + '\n')
+            staging.rename(client)
+    return client
+
+
 def verify_mq(e, marker):
     topic = 'local-verification-' + marker['id']
     group = topic + '-consumer'
     broker = 'localhost:' + str(e.ports['mq_broker'])
     mqadmin(e, 'updateTopic', '-b', broker, '-t', topic, '-r', '1', '-w', '1')
     mqadmin(e, 'updateSubGroup', '-b', broker, '-g', group)
-    client = e.state / 'mq-client'
-    if not client.exists():
-        client.mkdir(mode=0o700)
-        e.docker('cp', e.args.project + '-rocketmq-broker-1:' + e.image_home('rocketmq') + '/rocketmq-5.3.2/lib',
-                 str(client / 'lib'), phase='copy official message client')
+    client = message_client(e)
     e.run(['javac', '-cp', str(client / 'lib/*'), '-d', str(client),
            str(e.source / 'init/MessageProbe.java')], phase='compile message probe')
-    e.run(['java', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
+    e.run(['java', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
            e.args.bind + ':' + str(e.ports['mq_nameserver']), topic, marker['id'], group, 'read' if marker['existing'] else 'write'],
           phase='host message round trip', timeout=120)
-    e.run(['java', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
+    e.run(['java', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
            e.args.bind + ':' + str(e.ports['mq_proxy_remoting']), topic, marker['id'], group, 'proxy'],
           phase='Proxy remoting request', timeout=45)
+    e.run(['java', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
+           e.args.bind + ':' + str(e.ports['mq_proxy_grpc']), topic, marker['id'], group, 'grpc'],
+          phase='Proxy gRPC request', timeout=45)
 
 
 def verify_scheduler(e):
