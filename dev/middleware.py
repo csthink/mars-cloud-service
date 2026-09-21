@@ -274,6 +274,13 @@ class Environment:
     def prepare_volumes(self):
         # Compose creates volumes and labels; initialize only the new data directories.
         self.compose('create', 'jaeger', 'loki', phase='create storage')
+        self.docker('run', '--rm', '--name', self.args.project + '-prepare-probe',
+                    '--restart', 'no', '--cpus', '.5', '--memory', '512m', '--memory-swap', '512m',
+                    '--pids-limit', '128', '--log-driver', 'json-file', '--log-opt', 'max-size=10m',
+                    '--log-opt', 'max-file=3', '--label', OWNER_LABEL + '=' + self.owner,
+                    '-v', self.args.project + '_health-probe:/probe', self.image('busybox'),
+                    'sh', '-c', 'cp /bin/busybox /probe/busybox && chmod 755 /probe/busybox',
+                    phase='prepare health probe')
         for service in ('jaeger', 'loki'):
             volume = self.args.project + '_' + service + '-data'
             self.docker('run', '--rm', '--name', self.args.project + '-prepare-' + service,

@@ -61,11 +61,16 @@ for jar in "$SAMPLE_JAR" "$UPMS_JAR"; do
   fi
 done
 
-if [ -f "$MODULE_DIR/.env" ]; then
-  echo "加载 $MODULE_DIR/.env"
+ENV_FILE="${E2E_ENV_FILE:-$MODULE_DIR/.env}"
+if [ -n "${E2E_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ]; then
+  echo "指定的验收环境文件不存在。" >&2
+  exit 2
+fi
+if [ -f "$ENV_FILE" ]; then
+  echo "加载 $ENV_FILE"
   set -a
   # shellcheck disable=SC1091
-  . "$MODULE_DIR/.env"
+  . "$ENV_FILE"
   set +a
 fi
 SAMPLE_PORT="${SAMPLE_PORT:-8203}"

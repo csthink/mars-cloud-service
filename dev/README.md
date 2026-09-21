@@ -10,7 +10,7 @@ python3 dev/middleware.py export-env --slot 0
 python3 dev/middleware.py down
 ```
 
-`up` 拉取 `images.lock.json` 中的固定镜像，构建 Jaeger 健康探测镜像，初始化并验证 Nacos、RocketMQ、MySQL、Redis、Jaeger、Loki、Grafana 与 xxl-job-admin。启动返回成功才表示实际读写探测通过。Java 消息探测在宿主机运行，使用 NameServer 返回的 Broker 地址。
+`up` 拉取 `images.lock.json` 中的固定镜像，构建 Jaeger 健康探测镜像，并为不含 shell 的 Loki 挂载同一固定 BusyBox 探测程序，初始化并验证 Nacos、RocketMQ、MySQL、Redis、Jaeger、Loki、Grafana 与 xxl-job-admin。启动返回成功才表示实际读写探测通过。Java 消息探测在宿主机运行，使用 NameServer 返回的 Broker 地址。
 
 默认项目名 `mars-lab`，端口为组件基础端口加 20000，全部发布到回环地址。Nacos Console 为 28080，HTTP 为 28848；Grafana 为 23000，Jaeger UI 为 36686，xxl-job-admin 为 28083。全部长期容器限制 CPU、内存、swap、线程数量和日志轮转，并设置 `restart: always`。Docker Desktop 在用户登录后启动时恢复容器；尚未登录时的可用性取决于宿主机服务管理方式。
 
@@ -31,5 +31,9 @@ python3 dev/middleware.py down --project mars-lab-check --offset 30000
 xxl-job 使用官方 AMD64 镜像，在 ARM64 宿主机上需要 Docker 模拟支持；初始化只建立停止状态的本地验证任务，没有业务执行器。Jaeger 保留 48 小时追踪，Loki 保留 48 小时日志。镜像版本、digest、平台与初始化来源分别见 `images.lock.json` 和 `init/NOTICE.md`。Compose 文件采用 JSON 形式的 YAML，便于 Python 标准库和 Compose 共同读取同一份资源配置。
 
 `verify` 检查容器健康、实际资源限制、配置读写、账号隔离、消息往返、追踪与日志查询、数据源及登录。探测数据带独立标识，第一次成功后后续验证先读回这些数据，报告放在状态目录；数据超过保留期时明确失败，不将过期数据作为重启保留证据。
+
+`verify --new-verification-cycle` 将旧周期文件归档后生成新的探测数据；新周期报告不会声称已经证明重启保留。
+
+现有服务验收脚本支持 `E2E_ENV_FILE` 选择导出的连接文件，并继续用 `GATEWAY_PORT`、`UPMS_PORT`、`SAMPLE_PORT` 设置测试进程端口。显式指定的文件缺失会失败，不会改用其他环境。
 
 `down` 移除本项目容器及网络，始终保留卷和状态。重新 `up` 复用原数据与凭据。不要用 `docker compose down -v` 或清库处理初始化错误；失败详情在受保护的 `last-error.log`，恢复前保留状态与卷。长期停用使用 `down`；手动停止容器不表示 Docker 重启后仍停用。

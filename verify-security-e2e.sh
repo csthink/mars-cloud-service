@@ -3,9 +3,14 @@
 set -euo pipefail
 SERVICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SERVICE_DIR/scripts/security-test-runtime.sh"
-if [ -f "$SERVICE_DIR/mars-cloud-sample-service/.env" ]; then
+ENV_FILE="${E2E_ENV_FILE:-$SERVICE_DIR/mars-cloud-sample-service/.env}"
+if [ -n "${E2E_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ]; then
+  echo "指定的验收环境文件不存在。" >&2
+  exit 2
+fi
+if [ -f "$ENV_FILE" ]; then
   set -a
-  . "$SERVICE_DIR/mars-cloud-sample-service/.env"
+  . "$ENV_FILE"
   set +a
 fi
 : "${NACOS_NAMESPACE_ID:?Nacos namespace is required}"
