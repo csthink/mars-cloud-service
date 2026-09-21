@@ -137,6 +137,16 @@ def verify_observability(e, marker):
         body = request(jaeger + '/api/traces/' + trace)
         require(bool(body.get('data')) and body['data'][0]['traceID'] == trace, 'Jaeger trace query failed')
     retry(trace_check)
+    def search_check():
+        require('local-verification' in request(jaeger + '/api/services')['data'], 'Jaeger service list is missing the probe')
+        operations = request(jaeger + '/api/services/local-verification/operations')['data']
+        require(marker['id'] in operations, 'Jaeger operation list is missing the probe')
+        query = urllib.parse.urlencode({'service': 'local-verification', 'operation': marker['id'],
+                                       'start': str(marker['timestamp'] // 1000 - 1000),
+                                       'end': str(time.time_ns() // 1000), 'limit': '20'})
+        results = request(jaeger + '/api/traces?' + query)['data']
+        require(any(item['traceID'] == trace for item in results), 'Jaeger trace search failed')
+    retry(search_check)
     def log_check():
         query = urllib.parse.urlencode({'query': '{app="local-verification",run="' + marker['id'] + '"}',
                                        'start': str(marker['timestamp'] - 1000000), 'end': str(time.time_ns())})
