@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import secrets
 import time
@@ -9,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from middleware import Failure, SERVICES, protected_write
-from middleware_init import Nacos, request
+from middleware_init import HttpFailure, Nacos, request
 
 
 def retry(action, timeout=90):
@@ -30,7 +31,19 @@ def require(value, message):
 
 def verify_limits(e, rows):
     definition = json.loads(e.compose_file.read_text())['services']
+    expected_hashes = dict(line.split() for line in e.compose('config', '--hash', '*').stdout.splitlines())
+    env = e.compose_env()
     for row in rows:
+        info = json.loads(e.docker('inspect', e.args.project + '-' + row['service'] + '-1').stdout)[0]
+        labels = info['Config']['Labels']
+        require(labels.get('io.mars.middleware.source') == e.source_digest(), 'Running container belongs to another source candidate')
+        require(labels.get('com.docker.compose.config-hash') == expected_hashes[row['service']], 'Running Compose configuration differs')
+        image_key = definition[row['service']]['image'][2:-2]
+        expected_image = env[image_key]
+        image_info = json.loads(e.docker('image', 'inspect', expected_image).stdout)[0]
+        require(info['Image'] == image_info['Id'], 'Running image differs from the fixed image')
+        platform = 'linux/amd64' if row['service'] == 'xxl-job-admin' else e.args.platform
+        require(image_info['Os'] + '/' + image_info['Architecture'] == platform, 'Running image platform differs')
         expected = definition[row['service']]
         memory = int(expected['mem_limit'][:-1]) * 1024 * 1024
         require(row['memory'] == memory and row['swap'] == memory, 'Memory limits differ from the declared budget')
@@ -137,12 +150,16 @@ def verify_observability(e, marker):
     for uid in ('jaeger', 'loki'):
         body = request(grafana + '/api/datasources/uid/' + uid + '/health', headers=headers)
         require(body['status'] == 'OK', 'Grafana data source is not healthy: ' + uid)
-    if not marker['existing']:
+    try:
+        dashboard = request(grafana + '/api/dashboards/uid/' + marker['id'], headers=headers)
+    except HttpFailure as error:
+        if error.status != 404 or marker['existing']:
+            raise
         request(grafana + '/api/dashboards/db', 'POST', headers=headers,
                 json_body={'dashboard': {'uid': marker['id'], 'title': 'Local verification ' + marker['id'],
                                          'schemaVersion': 39, 'panels': []}, 'overwrite': False})
-    require(request(grafana + '/api/dashboards/uid/' + marker['id'], headers=headers)['dashboard']['uid'] == marker['id'],
-            'Grafana persistent dashboard missing')
+        dashboard = request(grafana + '/api/dashboards/uid/' + marker['id'], headers=headers)
+    require(dashboard['dashboard']['uid'] == marker['id'], 'Grafana persistent dashboard missing')
 
 
 def mqadmin(e, *args):
@@ -165,16 +182,11 @@ def verify_mq(e, marker):
     e.run(['javac', '-cp', str(client / 'lib/*'), '-d', str(client),
            str(e.source / 'init/MessageProbe.java')], phase='compile message probe')
     e.run(['java', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
-           e.args.bind + ':' + str(e.ports['mq_nameserver']), topic, marker['id'], group],
+           e.args.bind + ':' + str(e.ports['mq_nameserver']), topic, marker['id'], group, 'read' if marker['existing'] else 'write'],
           phase='host message round trip', timeout=120)
-    # A Proxy HTTP request must return a protocol response, not just accept a TCP connection.
-    url = 'http://' + e.args.bind + ':' + str(e.ports['mq_proxy_http']) + '/'
-    try:
-        with urllib.request.urlopen(url, timeout=15) as response:
-            status = response.status
-    except urllib.error.HTTPError as error:
-        status = error.code
-    require(status in (200, 400, 404, 405), 'RocketMQ Proxy did not respond to an HTTP request')
+    e.run(['java', '-cp', str(client) + ':' + str(client / 'lib/*'), 'MessageProbe',
+           e.args.bind + ':' + str(e.ports['mq_proxy_remoting']), topic, marker['id'], group, 'proxy'],
+          phase='Proxy remoting request', timeout=45)
 
 
 def verify_scheduler(e):
@@ -190,6 +202,9 @@ def verify(e):
     rows = e.status(emit=False)
     verify_limits(e, rows)
     path = e.state / 'verification-data.json'
+    if e.args.new_verification_cycle and path.exists():
+        archive = e.state / ('verification-data-' + str(time.time_ns()) + '.json')
+        path.rename(archive)
     if path.exists():
         marker = json.loads(path.read_text())
         marker['existing'] = marker.get('complete', False)
@@ -208,7 +223,9 @@ def verify(e):
     marker['complete'] = True
     protected_write(path, json.dumps(marker, indent=2) + '\n')
     report = {'created_at': time.time(), 'project': e.args.project, 'checks': passed,
-              'persistent_readback': marker['existing'], 'health': rows, 'images': e.images,
+              'persistent_readback': marker['existing'], 'source_digest': e.source_digest(),
+              'source_commits': {'framework': os.environ.get('MIDDLEWARE_FRAMEWORK_SHA'),
+                                 'service': os.environ.get('MIDDLEWARE_SERVICE_SHA')}, 'health': rows, 'images': e.images,
               'source_sha256': {str(p.relative_to(e.source)): hashlib.sha256(p.read_bytes()).hexdigest()
                                 for p in e.source.rglob('*') if p.is_file() and '.local' not in p.parts
                                 and '__pycache__' not in p.parts}, 'verification_id': marker['id']}

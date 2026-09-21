@@ -14,6 +14,12 @@ CONFIGS = {
 }
 
 
+class HttpFailure(Failure):
+    def __init__(self, status, path):
+        self.status = status
+        super().__init__('HTTP ' + str(status) + ' from ' + path)
+
+
 def request(url, method='GET', params=None, headers=None, json_body=None):
     data = None
     headers = dict(headers or {})
@@ -32,7 +38,7 @@ def request(url, method='GET', params=None, headers=None, json_body=None):
             body = result.read()
             return json.loads(body) if body else None
     except urllib.error.HTTPError as error:
-        raise Failure('HTTP ' + str(error.code) + ' from ' + urllib.parse.urlsplit(url).path) from None
+        raise HttpFailure(error.code, urllib.parse.urlsplit(url).path) from None
 
 
 class Nacos:

@@ -21,7 +21,7 @@ import uuid
 
 BASE_PORTS = dict(nacos_console=8080, nacos_http=8848, nacos_grpc=9848,
                   mq_nameserver=9876, mq_broker=10911, mq_vip=10909, mq_ha=10912,
-                  mq_proxy_http=8081, mq_proxy_grpc=8082, mysql=3306, redis=6379,
+                  mq_proxy_remoting=8081, mq_proxy_grpc=8082, mysql=3306, redis=6379,
                   jaeger_ui=16686, otlp_grpc=4317, otlp_http=4318, loki=3100,
                   grafana=3000, xxl=8083)
 SERVICES = ('nacos', 'rocketmq-nameserver', 'rocketmq-broker', 'mysql', 'redis',
@@ -162,6 +162,16 @@ class Environment:
                 labels = (resource.get('Config') or {}).get('Labels', resource.get('Labels')) or {}
                 if not self.owner or labels.get(OWNER_LABEL) != self.owner:
                     raise Failure('Project has resources belonging to another state directory')
+        definition = json.loads(self.compose_file.read_text())
+        names = [('volume', self.args.project + '_' + name) for name in definition['volumes']]
+        names.append(('network', self.args.project + '_default'))
+        for kind, name in names:
+            found = self.docker(kind, 'inspect', name, check=False)
+            if found.returncode == 0:
+                labels = json.loads(found.stdout)[0].get('Labels') or {}
+                if (not self.owner or labels.get(OWNER_LABEL) != self.owner
+                        or labels.get('com.docker.compose.project') != self.args.project):
+                    raise Failure('A declared resource name belongs to another environment')
         for service in SERVICES:
             found = self.docker('container', 'inspect', self.args.project + '-' + service + '-1', check=False)
             if found.returncode == 0:
@@ -179,12 +189,19 @@ class Environment:
             return metadata['WorkingDir']
         return str(Path(metadata['WorkingDir']).parent.parent)
 
+    def source_digest(self):
+        hashes = {str(p.relative_to(self.source)): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in self.source.rglob('*') if p.is_file() and '.local' not in p.parts
+                  and '__pycache__' not in p.parts}
+        return hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+
     def compose_env(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(('COMPOSE_', 'DOCKER_DEFAULT_PLATFORM'))}
         env.update(MIDDLEWARE_OWNER=self.owner, MIDDLEWARE_STATE=str(self.state),
                    MIDDLEWARE_SOURCE=str(self.source), MIDDLEWARE_BIND_ADDRESS=self.args.bind)
         env.update({'PORT_' + key.upper(): str(value) for key, value in self.ports.items()})
         env.update({key.upper().replace('-', '_') + '_IMAGE': self.image(key) for key in self.images})
+        env['MIDDLEWARE_SOURCE_DIGEST'] = self.source_digest()
         env['NACOS_IMAGE_HOME'] = self.image_home('nacos')
         env['ROCKETMQ_IMAGE_HOME'] = self.image_home('rocketmq')
         env['JAEGER_LOCAL_IMAGE'] = 'mars-lab-jaeger:' + self.jaeger_build_id()
@@ -303,8 +320,8 @@ class Environment:
 
     def up(self):
         self.preflight()
-        self.render()
         self.prepare_images()
+        self.render()
         self.prepare_volumes()
         self.compose('up', '-d', 'mysql', 'redis', 'nacos', 'rocketmq-nameserver', 'jaeger', 'loki',
                      phase='start dependencies', timeout=240)
@@ -350,6 +367,7 @@ def parser():
     p.add_argument('--platform', choices=['linux/arm64', 'linux/amd64'], default='linux/arm64' if os.uname().machine in ('arm64', 'aarch64') else 'linux/amd64')
     p.add_argument('--slot', type=int, default=0)
     p.add_argument('--output')
+    p.add_argument('--new-verification-cycle', action='store_true', help='Archive completed evidence and create new probe data')
     return p
 
 

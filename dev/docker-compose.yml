@@ -15,7 +15,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -62,7 +63,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -103,7 +105,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -119,13 +122,14 @@
         "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_BROKER:?}:${PORT_MQ_BROKER:?}",
         "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_VIP:?}:${PORT_MQ_VIP:?}",
         "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_HA:?}:${PORT_MQ_HA:?}",
-        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_PROXY_HTTP:?}:8081",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_PROXY_REMOTING:?}:8081",
         "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_PROXY_GRPC:?}:8082"
       ],
       "volumes": [
         "broker-data:${ROCKETMQ_IMAGE_HOME:?}/store",
         "broker-logs:${ROCKETMQ_IMAGE_HOME:?}/logs",
-        "${MIDDLEWARE_STATE:?}/broker.conf:${ROCKETMQ_IMAGE_HOME:?}/broker.conf:ro"
+        "${MIDDLEWARE_STATE:?}/broker.conf:${ROCKETMQ_IMAGE_HOME:?}/broker.conf:ro",
+        "${MIDDLEWARE_SOURCE:?}/config/proxy.json:${ROCKETMQ_IMAGE_HOME:?}/rocketmq-5.3.2/conf/rmq-proxy.json:ro"
       ],
       "command": [
         "sh",
@@ -159,7 +163,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -203,7 +208,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -248,12 +254,18 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
-          "CMD-SHELL",
-          "/usr/local/bin/busybox wget -q -O /dev/null http://localhost:13133/status"
+          "CMD",
+          "/usr/local/bin/busybox",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://localhost:13133/status"
         ],
         "interval": "20s",
         "timeout": "15s",
@@ -289,7 +301,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -327,7 +340,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -378,7 +392,8 @@
         }
       },
       "labels": {
-        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}",
+        "io.mars.middleware.source": "${MIDDLEWARE_SOURCE_DIGEST:?}"
       },
       "healthcheck": {
         "test": [
@@ -396,7 +411,8 @@
       "volumes": [
         "xxl-logs:/data/applogs",
         "${MIDDLEWARE_STATE:?}/xxl.properties:/run/local/application.properties:ro",
-        "${MIDDLEWARE_SOURCE:?}/init/health-xxl.sh:/opt/local/health-xxl.sh:ro"
+        "${MIDDLEWARE_SOURCE:?}/init/health-xxl.sh:/opt/local/health-xxl.sh:ro",
+        "${MIDDLEWARE_SOURCE:?}/config/xxl-logback.xml:/run/local/logback.xml:ro"
       ],
       "platform": "linux/amd64",
       "entrypoint": [
@@ -406,7 +422,8 @@
         "-DLOG_HOME=/data/applogs",
         "-jar",
         "/app.jar",
-        "--spring.config.additional-location=file:/run/local/application.properties"
+        "--spring.config.additional-location=file:/run/local/application.properties",
+        "--logging.config=file:/run/local/logback.xml"
       ],
       "depends_on": {
         "mysql": {
