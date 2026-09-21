@@ -7,8 +7,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static com.mars.cloud.service.sample.security.AuthenticatedProtocolRequests.get;
+import static com.mars.cloud.service.sample.security.AuthenticatedProtocolRequests.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles({"local", "test"})
-class SampleEnvelopeContractTest {
+class SampleEnvelopeContractTest extends com.mars.cloud.service.sample.security.SecurityTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

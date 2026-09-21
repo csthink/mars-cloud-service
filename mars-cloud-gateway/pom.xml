@@ -19,6 +19,9 @@
     <description>mars-cloud 网关：系统外部请求的统一入口，路由到各业务服务（响应式栈）</description>
 
     <dependencies>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-spring-boot-starter</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-test-support</artifactId><scope>test</scope></dependency>
+
         <!--
           响应式网关。Spring Cloud 2025.x 起 artifactId 带栈名后缀：
           webflux 是响应式栈，webmvc 是 Servlet 栈；旧名 spring-cloud-starter-gateway 已不再使用。
@@ -105,6 +108,9 @@
             <id>macos-aarch64-dns</id>
             <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
             <dependencies>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-spring-boot-starter</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-test-support</artifactId><scope>test</scope></dependency>
+
                 <dependency>
                     <groupId>io.netty</groupId>
                     <artifactId>netty-resolver-dns-native-macos</artifactId>

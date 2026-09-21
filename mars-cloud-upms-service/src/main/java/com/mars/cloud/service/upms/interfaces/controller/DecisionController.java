@@ -41,6 +41,10 @@ public class DecisionController {
     public ResponseEntity<? extends UnifyResponse<?>> decide(@RequestBody(required = false) Map<String, Object> body) {
         try {
             DecisionRequest request = parser.parse(body);
+            var caller = com.mars.cloud.security.AuthenticatedCaller.from(
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+            if (!caller.subject().equals(request.callerId()))
+                throw new com.mars.cloud.security.SecurityFailure(com.mars.cloud.security.SecurityErrorCode.CALLER_MISMATCH);
             DecisionOutcome outcome = decisionService.decide(request);
             ResponseEntity<UnifyResponse<DecisionResult>> response = encoder.decision(outcome);
             return response;
@@ -48,6 +52,8 @@ public class DecisionController {
             return encoder.error(HttpStatus.BAD_REQUEST, ex.code(), ex.getMessage());
         } catch (SnapshotUnavailableSignal ex) {
             return encoder.error(HttpStatus.SERVICE_UNAVAILABLE, UpmsProtocolCode.SNAPSHOT_UNAVAILABLE, ex.getMessage());
+        } catch (com.mars.cloud.security.SecurityFailure ex) {
+            throw ex;
         } catch (Exception ex) {
             return encoder.error(HttpStatus.INTERNAL_SERVER_ERROR, UpmsProtocolCode.INTERNAL_ERROR, "internal error");
         }

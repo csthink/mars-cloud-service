@@ -1,4 +1,10 @@
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${MARS_SECURITY_ISSUER_URI:}
+          jwk-set-uri: ${MARS_SECURITY_JWK_SET_URI:}
   application:
     name: mars-cloud-sample-service
   profiles:
@@ -10,6 +16,8 @@ spring:
     encoding: UTF-8
 
 mars:
+  security:
+    audience: ${spring.application.name}
   env:
     # 这里列出的 profile 视为开发/测试环境：失败响应会回带调试详情。
     # 生产 profile 不要出现在这个列表里。
@@ -26,6 +34,7 @@ mars:
     framework-layers:
       - common
       - mvc
+      - security
     # 本服务自己的那一段。
     # 业务服务共用 business 区段（66000–99999），各自声明一段、互不重叠；
     # 本示例占用 66100–66199，见 docs/services.md 的服务清单。

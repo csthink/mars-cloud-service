@@ -8,6 +8,8 @@
 set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../scripts/security-test-runtime.sh
+. "$MODULE_DIR/../scripts/security-test-runtime.sh"
 SERVICE_DIR="$(cd "$MODULE_DIR/.." && pwd)"
 SAMPLE_JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
 UPMS_JAR="$SERVICE_DIR/mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
@@ -41,7 +43,7 @@ contains() {
 wait_until_ok() {
   local url="$1" limit="$2" waited=0
   while [ "$waited" -lt "$limit" ]; do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if security_curl -fsS "$url" >/dev/null 2>&1; then
       echo "$waited"
       return 0
     fi
@@ -77,7 +79,7 @@ if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${N
 fi
 
 for probe in "$SAMPLE/actuator/health" "$UPMS/actuator/health"; do
-  if curl -fsS "$probe" >/dev/null 2>&1; then
+  if security_curl -fsS "$probe" >/dev/null 2>&1; then
     echo "$probe 已经有服务在响应。本脚本必须自己启动实例，请先停掉它或更换端口。"
     exit 2
   fi
@@ -88,6 +90,7 @@ python3 - "$SAMPLE_PORT" "$UPMS_PORT" <<'PY'
 import socket, sys
 for port in sys.argv[1:]:
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(("127.0.0.1", int(port)))
 PY
 [ "$?" -eq 0 ] || exit 2
@@ -99,8 +102,10 @@ cleanup() {
       wait "$pid" 2>/dev/null
     fi
   done
+  stop_security_test_issuer
 }
 trap cleanup EXIT
+start_security_test_issuer "$MODULE_DIR/.." || exit 1
 
 OBSERVATION_DIR="$(mktemp -d)"
 python3 "$MODULE_DIR/scripts/verify-upms-proxy.py" "$UPMS_PORT" "$OBSERVATION_DIR" &
@@ -136,7 +141,7 @@ echo "③ sample 经 Nacos 服务名调用 UPMS"
 request='{"action":"view","resource":"demo:view:domain:kubernetes-ops"}'
 elapsed=0
 while [ "$elapsed" -lt "$DISCOVERY_TIMEOUT" ]; do
-  body=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$SAMPLE/v1/upms/decision" \
+  body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$SAMPLE/v1/upms/decision" \
     -H 'Content-Type: application/json' -d "$request")
   if [ "$(printf '%s' "$body" | tail -1)" = "200" ]; then
     break
@@ -175,7 +180,7 @@ wait "$PROXY_PID" 2>/dev/null
 PROXY_PID=""
 elapsed=0
 while [ "$elapsed" -lt "$DISCOVERY_TIMEOUT" ]; do
-  body=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$SAMPLE/v1/upms/decision" \
+  body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$SAMPLE/v1/upms/decision" \
     -H 'Content-Type: application/json' -d "$request")
   if [ "$(printf '%s' "$body" | tail -1)" = "503" ] && printf '%s' "$body" | grep -q '"code":"66104"'; then
     break
@@ -193,4 +198,5 @@ if [ "$fail" -ne 0 ]; then
   echo "sample 日志末尾："; tail -30 "$SAMPLE_LOG"
   exit 1
 fi
+verify_no_test_credentials "$SAMPLE_LOG" "$UPMS_LOG" || exit 1
 echo "全部通过。"

@@ -19,6 +19,9 @@
     <description>mars-cloud 授权决策服务（PDP）：输入 subject / action / resource，输出允许或拒绝</description>
 
     <dependencies>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-spring-boot-starter</artifactId></dependency>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-test-support</artifactId><scope>test</scope></dependency>
+
         <dependency>
             <groupId>com.mars.cloud</groupId>
             <artifactId>mars-cloud-nacos-spring-boot-starter</artifactId>

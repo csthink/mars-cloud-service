@@ -12,6 +12,7 @@ public class UpmsErrorCodeRegistrar implements ErrorCodeRegistrar {
 
     @Override
     public Collection<? extends ErrorCode> codes() {
-        return Arrays.asList(UpmsErrorCode.values());
+        return java.util.stream.Stream.concat(Arrays.stream(UpmsErrorCode.values()),
+                Arrays.stream(com.mars.cloud.security.SecurityErrorCode.values())).toList();
     }
 }

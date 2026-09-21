@@ -19,8 +19,11 @@
     <description>框架使用示例：一个最小的 mars-cloud 服务，演示统一响应、错误码与 i18n</description>
 
     <dependencies>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-spring-boot-starter</artifactId></dependency>
+        <dependency><groupId>com.mars.cloud</groupId><artifactId>mars-cloud-security-test-support</artifactId><scope>test</scope></dependency>
+
         <!--
-          只引这一个框架 starter 就能拿到：统一响应与全局异常、错误码区间校验、i18n、
+          MVC starter 提供：统一响应与全局异常、错误码区间校验、i18n、
           请求上下文、转换器协商、springdoc 接口文档、以及 Bean Validation。
           见 mars-cloud-mvc-spring-boot-starter 的 README。
         -->
@@ -36,7 +39,7 @@
 
         <dependency>
             <groupId>com.mars.cloud</groupId>
-            <artifactId>mars-cloud-feign-spring-boot-starter</artifactId>
+            <artifactId>mars-cloud-security-feign</artifactId>
         </dependency>
 
         <!-- 业务服务自己提供 Web 运行时（starter 刻意不向下游传递它） -->

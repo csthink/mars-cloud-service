@@ -125,7 +125,11 @@ public class EnvelopeErrorWebExceptionHandler implements ErrorWebExceptionHandle
         details.put("method", request.getMethod().name());
         details.put("uri", request.getURI().getRawPath());
         Map<String, String> headers = new LinkedHashMap<>();
-        request.getHeaders().forEach((name, values) -> headers.put(name, String.join(",", values)));
+        request.getHeaders().forEach((name, values) -> {
+            if (!com.mars.cloud.common.http.SensitiveHttpHeaders.isSensitive(name)) {
+                headers.put(name, String.join(",", values));
+            }
+        });
         details.put("headers", headers);
         return details;
     }

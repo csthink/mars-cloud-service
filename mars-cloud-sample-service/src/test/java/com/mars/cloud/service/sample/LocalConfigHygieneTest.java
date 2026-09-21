@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles({"local", "test"})
-class LocalConfigHygieneTest {
+class LocalConfigHygieneTest extends com.mars.cloud.service.sample.security.SecurityTestSupport {
 
     @Autowired
     private Environment environment;

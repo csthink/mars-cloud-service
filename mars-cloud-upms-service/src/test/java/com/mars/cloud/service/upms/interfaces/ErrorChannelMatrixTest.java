@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static com.mars.cloud.service.upms.security.AuthenticatedProtocolRequests.get;
+import static com.mars.cloud.service.upms.security.AuthenticatedProtocolRequests.post;
 
 @SpringBootTest(
         classes = UpmsApplication.class,
@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 )
 @AutoConfigureMockMvc
 @ActiveProfiles({"local", "test"})
-class ErrorChannelMatrixTest {
+class ErrorChannelMatrixTest extends com.mars.cloud.service.upms.security.SecurityTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

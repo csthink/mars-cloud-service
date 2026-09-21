@@ -16,7 +16,8 @@ import java.util.Collection;
 public class SampleErrorCodeRegistrar implements ErrorCodeRegistrar {
 
     @Override
-    public Collection<SampleErrorCode> codes() {
-        return Arrays.asList(SampleErrorCode.values());
+    public Collection<? extends com.mars.cloud.common.error.ErrorCode> codes() {
+        return java.util.stream.Stream.concat(Arrays.stream(SampleErrorCode.values()),
+                Arrays.stream(com.mars.cloud.security.SecurityErrorCode.values())).toList();
     }
 }

@@ -48,6 +48,10 @@ mvn clean install
 mvn -pl mars-cloud-upms-service -am test
 ```
 
+sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 `MARS_SECURITY_JWK_SET_URI`。两服务要求合法 Bearer 令牌，令牌 audience 分别包含服务名；sample 调 UPMS 时需要同时包含两者。健康探针仍允许匿名访问。凭据不写入仓库或 Nacos 配置正文。
+
+`./verify-security-e2e.sh` 通过测试 classpath 启动临时签发器，验证正常打包 jar 的认证与权限行为，并在结束时清理临时令牌。原有三份验收脚本也自动使用同一辅助流程。
+
 ## 服务
 
 | 服务 | 端口 | 错误码区间 | 职责 | 状态 |

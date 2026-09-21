@@ -9,6 +9,12 @@
 - Nacos 配置版本：`GET /upms/actuator/info`
 - 错误码区间：`65000–65999`（框架权威分配表里的 `upms-service` 区段）
 
+## 身份验证
+
+设置 `MARS_SECURITY_ISSUER_URI` 与可选的 `MARS_SECURITY_JWK_SET_URI`。除健康探针外，请求必须携带合法 Bearer 令牌，audience 包含 `mars-cloud-upms-service`；`caller_id` 必须等于已验证的 sub，否则返回 403 / 62006。UPMS 只验证身份，不向自身发起权限查询。
+
+示例的 `AUTH_HEADER_FILE` 指向权限 0600 的本地请求头文件，包含 `Authorization: Bearer <合法令牌>`。令牌不进入 `.env`、Nacos 或版本库。
+
 ## 响应契约
 
 控制器显式返回 `UnifyResponse` 信封，并标注 `@IgnoreResponseAnnotation`，
@@ -18,16 +24,17 @@
 | --- | --- | --- |
 | allow | 200 | `success:true` + `result.decision:"allow"` |
 | deny | 200 | `success:true` + `result.decision:"deny"`、`result.reason_code` |
+| 认证或主体错误 | 401 / 403 | `success:false` + security 数字错误码 |
 | 请求或服务态错误 | 非 200 | `success:false` + 文本码（`missing_field` / `malformed_request` / `snapshot_unavailable` …） |
 
 消费方必须先判断 HTTP status 与 `success` 位，再读决策或错误码：
-**deny 不触发 fallback，只有服务态错误（如 `snapshot_unavailable`）才进入 fallback。**
+**deny 是有效拒绝；协议失败或服务不可用同样阻止继续执行业务，不返回默认 allow。**
 
 请求体三个字段都是必填且必须规范：`caller_id`、`action`、`resource`；
 `resource` 必须是 `<platform>:<capability>` 形式。
 
 ```bash
-curl -X POST http://127.0.0.1:8102/upms/v1/decision \
+curl --header "@$AUTH_HEADER_FILE" -X POST http://127.0.0.1:8102/upms/v1/decision \
   -H 'Content-Type: application/json' \
   -d '{"caller_id":"local-admin","action":"view","resource":"demo:view:domain:kubernetes-ops"}'
 ```

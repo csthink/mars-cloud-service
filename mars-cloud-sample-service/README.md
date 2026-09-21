@@ -7,7 +7,7 @@
 
 ## 先跑起来
 
-需要 **JDK 25**、Maven 与本机 Nacos。Nacos Namespace 中要有：
+需要 **JDK 25**、Maven 与本机 Nacos。启动前在环境中设置 `MARS_SECURITY_ISSUER_URI`，可选设置 `MARS_SECURITY_JWK_SET_URI`；信任配置要求 HTTPS，local/test 可使用回环 HTTP。Nacos Namespace 中要有：
 
 - `COMMON/shared-common.yaml`
 - `DEFAULT_GROUP/mars-cloud-sample-service.yaml`
@@ -35,15 +35,15 @@ cd ../mars-cloud-service && mvn -pl mars-cloud-sample-service -am package
 cd mars-cloud-sample-service && ./run-local.sh
 ```
 
-服务监听 `8103`，context path 是 `/sample`。验证：
+服务监听 `8103`，context path 是 `/sample`。业务请求使用合法 Bearer 令牌，audience 包含 `mars-cloud-sample-service`，调用 UPMS 时另含 `mars-cloud-upms-service`。下列示例的 `AUTH_HEADER_FILE` 指向权限 0600 的本地文件，内容为 `Authorization: Bearer <合法令牌>`；不要把令牌写入 `.env`、命令行参数或版本库。验证：
 
 ```bash
 B=http://127.0.0.1:8103/sample
 
-curl -s $B/actuator/health
+curl --header "@$AUTH_HEADER_FILE" -s $B/actuator/health
 # {"status":"UP"}
 
-curl -s $B/v1/orders/1
+curl --header "@$AUTH_HEADER_FILE" -s $B/v1/orders/1
 # {"success":true,"result":{"id":"1","sku":"demo-sku","quantity":2}}
 ```
 
@@ -77,7 +77,7 @@ public Map<String, Object> get(@PathVariable String id) {
 ```
 
 ```bash
-curl -s $B/v1/orders/1
+curl --header "@$AUTH_HEADER_FILE" -s $B/v1/orders/1
 ```
 
 ```json
@@ -97,7 +97,7 @@ throw new BusinessException(SampleErrorCode.OUT_OF_STOCK);
 ```
 
 ```bash
-curl -s -X POST $B/v1/orders -H 'Content-Type: application/json' \
+curl --header "@$AUTH_HEADER_FILE" -s -X POST $B/v1/orders -H 'Content-Type: application/json' \
   -d '{"sku":"out-of-stock","quantity":1}'
 ```
 
@@ -145,10 +145,10 @@ throw new ResourceNotFoundException(SampleErrorCode.RESOURCE_NOT_FOUND);
 ### 5. 错误文案随 `Accept-Language` 变化
 
 ```bash
-curl -s -H 'Accept-Language: zh-CN' $B/v1/orders/missing
+curl --header "@$AUTH_HEADER_FILE" -s -H 'Accept-Language: zh-CN' $B/v1/orders/missing
 # {"success":false,"code":"66101","message":"资源不存在"}
 
-curl -s -H 'Accept-Language: en-US' $B/v1/orders/missing
+curl --header "@$AUTH_HEADER_FILE" -s -H 'Accept-Language: en-US' $B/v1/orders/missing
 # {"success":false,"code":"66101","message":"Resource not found"}
 ```
 
@@ -156,17 +156,21 @@ curl -s -H 'Accept-Language: en-US' $B/v1/orders/missing
 
 ### 6. 经服务名调用 UPMS
 
-sample 不依赖 UPMS 模块，只在本模块声明 Feign 接口与本地 DTO：
+sample 不依赖 UPMS 模块，通过框架 `mars-cloud-security-feign` 提供的 `PdpClient` 调用 UPMS，应用适配器保留本服务 DTO：
 
 ```bash
-curl -s -X POST $B/v1/upms/decision \
+curl --header "@$AUTH_HEADER_FILE" -s -X POST $B/v1/upms/decision \
   -H 'Content-Type: application/json' \
   -d '{"action":"view","resource":"demo:view:domain:kubernetes-ops"}'
 ```
 
-starter 会经 Nacos 选择 `mars-cloud-upms-service` 实例，并传播服务端建立的调用方身份。
+starter 会经 Nacos 选择 `mars-cloud-upms-service` 实例，并传播已验证令牌中的身份及当前访问令牌。
 UPMS 返回 4xx 或无效响应时，sample 返回自己的 `66103`；无实例、连接失败或超时时返回
 HTTP 503 + `66104`。下游 message 不会进入 sample 响应。
+
+### 7. 验证身份与方法权限
+
+`GET /v1/security/me` 返回已验证的 subject、clientId、tenantId。`GET /v1/security/decision` 通过真实方法注解检查固定的 `view` / `demo:view:domain:kubernetes-ops` 权限；拒绝时返回 403，权限服务故障时返回 502 或 503。主体不能由请求体或内部头替换。
 
 ## 错误码与国际化的接线
 
@@ -178,7 +182,7 @@ HTTP 503 + `66104`。下游 message 不会进入 sample 响应。
 mars:
   error-code:
     validate: true
-    framework-layers: [ common, mvc ]   # 用到的框架层，区间取自框架内置分配表
+    framework-layers: [ common, mvc, security ]   # 用到的框架层，区间取自框架内置分配表
     ranges:
       - owner: business
         start: 66100
@@ -200,8 +204,9 @@ public enum SampleErrorCode implements ErrorCode {
 @Component
 public class SampleErrorCodeRegistrar implements ErrorCodeRegistrar {
     @Override
-    public Collection<SampleErrorCode> codes() {
-        return Arrays.asList(SampleErrorCode.values());
+    public Collection<? extends ErrorCode> codes() {
+        return Stream.concat(Arrays.stream(SampleErrorCode.values()),
+                Arrays.stream(SecurityErrorCode.values())).toList();
     }
 }
 ```
@@ -251,10 +256,10 @@ src/main/java/com/mars/cloud/service/sample/
 │   ├── SampleErrorCode.java            # 错误码定义
 │   └── SampleErrorCodeRegistrar.java   # 注册给框架（启动期校验用）
 ├── upms/
-│   ├── UpmsDecisionClient.java          # 只写服务名的 Feign 接口
-│   ├── UpmsDecisionAdapter.java         # 身份上下文、信封解包与领域边界
-│   ├── SampleUpmsFailureMapper.java      # 下游失败翻译为 sample 错误码
+│   ├── UpmsDecisionAdapter.java         # 权限调用结果与 sample 错误码映射
 │   └── *Request.java / *Result.java     # sample 自己维护的 HTTP 协议 DTO
+├── security/
+│   └── SecurityController.java          # 已验证身份与方法权限示例
 └── web/
     ├── OrderController.java            # 示例端点
     └── CreateOrderRequest.java         # 带校验注解的请求 DTO
@@ -265,8 +270,7 @@ src/main/java/com/mars/cloud/service/sample/
 
 ## 依赖边界
 
-本模块依赖框架仓的 mvc、Nacos 与 Feign starter。它们分别提供 Web 横切能力、注册配置与
-阻塞式服务调用契约。Web 运行时由服务自己提供。
+本模块依赖框架仓的 mvc、Nacos、security starter 与 security-feign 适配模块，分别提供响应处理、注册配置、身份验证和权限调用。Web 运行时由服务自己提供。
 
 服务之间**不加编译期依赖**，只走 HTTP 调用。
 

@@ -1,4 +1,10 @@
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${MARS_SECURITY_ISSUER_URI:}
+          jwk-set-uri: ${MARS_SECURITY_JWK_SET_URI:}
   application:
     name: mars-cloud-upms-service
   profiles:
@@ -14,6 +20,10 @@ spring:
     encoding: UTF-8
 
 mars:
+  security:
+    audience: ${spring.application.name}
+    authorization:
+      enabled: false
   env:
     dev-profiles:
       - local
@@ -26,6 +36,7 @@ mars:
     framework-layers:
       - common
       - mvc
+      - security
     # 业务服务自己的区间。upms-service 的权威区段是 65000–65999，
     # 声明值必须落在该区段内，否则启动期校验直接失败。
     ranges:

@@ -9,17 +9,15 @@
 # 前置：本机 Nacos 已启动，Namespace 下已有 COMMON/shared-common.yaml、
 # DEFAULT_GROUP/mars-cloud-gateway.yaml 与 DEFAULT_GROUP/mars-cloud-upms-service.yaml；
 # 本目录有 `.env`（或环境里已有 NACOS_* 变量）；两个模块都已 mvn package；
-# 机器上有 curl 与 python3（第 ⑦ 项用它比较 JSON 顶层键集合）。
+# 机器上有 security_curl 与 python3（第 ⑦ 项用它比较 JSON 顶层键集合）。
 #
 set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../scripts/security-test-runtime.sh
+. "$MODULE_DIR/../scripts/security-test-runtime.sh"
 GATEWAY_JAR="$MODULE_DIR/target/mars-cloud-gateway.jar"
 UPMS_JAR="$MODULE_DIR/../mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
-GATEWAY_PORT="${GATEWAY_PORT:-8100}"
-UPMS_PORT="${UPMS_PORT:-8102}"
-GATEWAY="http://127.0.0.1:${GATEWAY_PORT}"
-UPMS="http://127.0.0.1:${UPMS_PORT}"
 GATEWAY_LOG="$(mktemp -t gateway-e2e)"
 UPMS_LOG="$(mktemp -t upms-e2e)"
 DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-90}"
@@ -47,13 +45,13 @@ contains() {
   esac
 }
 
-status_of() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+status_of() { security_curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
 wait_until_ok() {
   # 轮询直到 URL 返回 2xx；输出耗时秒数，超时返回非零。
   local url="$1" limit="$2" waited=0
   while [ "$waited" -lt "$limit" ]; do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if security_curl -fsS "$url" >/dev/null 2>&1; then
       echo "$waited"
       return 0
     fi
@@ -78,6 +76,10 @@ if [ -f "$MODULE_DIR/.env" ]; then
   . "$MODULE_DIR/.env"
   set +a
 fi
+GATEWAY_PORT="${GATEWAY_PORT:-8100}"
+UPMS_PORT="${UPMS_PORT:-8102}"
+GATEWAY="http://127.0.0.1:${GATEWAY_PORT}"
+UPMS="http://127.0.0.1:${UPMS_PORT}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
@@ -86,7 +88,7 @@ fi
 
 # 两个端口都必须空闲：否则健康检查会打到已在跑的旧实例上，所有断言都「通过」而其实验的是别的进程。
 for probe in "$GATEWAY/actuator/health" "$UPMS/upms/actuator/health"; do
-  if curl -fsS "$probe" >/dev/null 2>&1; then
+  if security_curl -fsS "$probe" >/dev/null 2>&1; then
     echo "$probe 已经有服务在响应。本脚本需要自己启动实例，请先停掉它，或用 GATEWAY_PORT / UPMS_PORT 换端口。"
     exit 2
   fi
@@ -99,8 +101,11 @@ cleanup() {
       wait "$pid" 2>/dev/null
     fi
   done
+  stop_security_test_issuer
 }
 trap cleanup EXIT
+start_security_test_issuer "$MODULE_DIR/.." || exit 1
+SECURITY_CURL_HEADER="$SECURITY_TEST_DIR/admin.headers"
 
 echo "① 先启动网关（端口 $GATEWAY_PORT，日志 $GATEWAY_LOG）"
 SERVER_PORT="$GATEWAY_PORT" java "${JVM_FLAGS[@]}" -jar "$GATEWAY_JAR" >"$GATEWAY_LOG" 2>&1 &
@@ -109,18 +114,18 @@ if ! elapsed=$(wait_until_ok "$GATEWAY/actuator/health" 60); then
   echo "网关未在 60 秒内就绪，日志末尾："; tail -30 "$GATEWAY_LOG"; exit 1
 fi
 check "网关 actuator/health 为 UP" "UP" \
-  "$(curl -fsS "$GATEWAY/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
+  "$(security_curl -fsS "$GATEWAY/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
 
 echo
 echo "② UPMS 尚未启动：经网关访问必须是信封式 503（63002），不是裸错误页"
-body=$(curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/upms/actuator/health")
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/upms/actuator/health")
 check "HTTP 状态码" "503" "$(printf '%s' "$body" | tail -1)"
 contains "success 为 false" '"success":false' "$body"
 contains "错误码为 63002" '"code":"63002"' "$body"
 
 echo
 echo "③ 没有路由的路径：信封式 404（63001）"
-body=$(curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/no-such-path")
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/no-such-path")
 check "HTTP 状态码" "404" "$(printf '%s' "$body" | tail -1)"
 contains "错误码为 63001" '"code":"63001"' "$body"
 
@@ -141,12 +146,12 @@ else
   printf '  FAIL 等待 %ss 后经网关仍不可达（服务发现未更新）\n' "$DISCOVERY_TIMEOUT"; fail=$((fail + 1))
 fi
 check "经网关的 UPMS 健康检查为 UP" "UP" \
-  "$(curl -s "$GATEWAY/upms/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
+  "$(security_curl -s "$GATEWAY/upms/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
 
 echo
 echo "⑥ 业务调用经网关成功：种子快照里 local-admin 持有 demo 平台全部能力"
 decision='{"caller_id":"local-admin","action":"view","resource":"demo:view:domain:kubernetes-ops"}'
-body=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
   -H 'Content-Type: application/json' -d "$decision")
 check "HTTP 状态码" "200" "$(printf '%s' "$body" | tail -1)"
 contains "success 为 true" '"success":true' "$body"
@@ -154,16 +159,16 @@ contains "决策为 allow" '"decision":"allow"' "$body"
 
 echo
 echo "⑦ 错误响应格式一致：业务服务的失败信封经网关原样透传；网关自产错误与之同一种形状"
-via_gateway=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
+via_gateway=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
   -H 'Content-Type: application/json' -d '{"caller_id":')
-direct=$(curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$UPMS/upms/v1/decision" \
+direct=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$UPMS/upms/v1/decision" \
   -H 'Content-Type: application/json' -d '{"caller_id":')
 check "非法请求体：HTTP 状态码经网关与直连一致" "$(printf '%s' "$direct" | tail -1)" "$(printf '%s' "$via_gateway" | tail -1)"
 check "非法请求体：响应体经网关与直连逐字节一致" "$(printf '%s' "$direct" | sed '$d')" "$(printf '%s' "$via_gateway" | sed '$d')"
 keys_of() { printf '%s' "$1" | sed '$d' | python3 -c 'import sys,json; print(",".join(sorted(k for k in json.load(sys.stdin) if k != "result")))'; }
 check "网关自产 63001 信封与业务失败信封的键集合相同（忽略 result）" \
   "$(keys_of "$direct")" \
-  "$(keys_of "$(curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/no-such-path")")"
+  "$(keys_of "$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/no-such-path")")"
 
 echo
 echo "⑧ 两个真进程的日志里没有 JDK 警告"
@@ -178,4 +183,5 @@ if [ "$fail" -ne 0 ]; then
   echo "网关日志末尾："; tail -20 "$GATEWAY_LOG"
   exit 1
 fi
+verify_no_test_credentials "$GATEWAY_LOG" "$UPMS_LOG" || exit 1
 echo "全部通过。"

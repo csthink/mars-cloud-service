@@ -12,7 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static com.mars.cloud.service.upms.security.AuthenticatedProtocolRequests.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @ActiveProfiles({"local", "test"})
-class DecisionEndpointNoActiveSnapshotTest {
+class DecisionEndpointNoActiveSnapshotTest extends com.mars.cloud.service.upms.security.SecurityTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

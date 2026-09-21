@@ -22,8 +22,8 @@ import java.util.Set;
 
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static com.mars.cloud.service.upms.security.AuthenticatedProtocolRequests.get;
+import static com.mars.cloud.service.upms.security.AuthenticatedProtocolRequests.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 )
 @AutoConfigureMockMvc
 @ActiveProfiles({"local", "test"})
-class DecisionEndpointEnvelopeTest {
+class DecisionEndpointEnvelopeTest extends com.mars.cloud.service.upms.security.SecurityTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
