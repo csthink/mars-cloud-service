@@ -33,3 +33,6 @@ logs/
 **/configtree/
 *.p12
 *.jks
+
+# Python verification tools
+__pycache__/

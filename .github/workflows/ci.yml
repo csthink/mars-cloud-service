@@ -1,77 +1,123 @@
 name: CI
 
 on:
-  # 不过滤分支：安全扫描必须在**每个分支**上跑。
-  # 只过滤 main 的话，特性分支上累积的违规要等到开 PR 才被发现——
-  # 那时可能已经 push 过，而历史泄漏不可挽回。
   push:
   pull_request:
     branches: [main]
-  # 由 mars-cloud-framework 的 CI 在构建成功后触发（见那边的 ci.yml 与本仓 docs/ci.md）。
+  workflow_dispatch:
   repository_dispatch:
     types: [framework-updated]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # 分组里必须带上事件名：本仓同时接收 push 与 repository_dispatch，
-  # 而两者的 github.ref 都是 refs/heads/main —— 只用 ref 分组会让它们互相取消。
-  # 上游框架推送后本仓会被跨仓触发，若前后脚也有一次本仓 push，
-  # 那个 push run 就会被跨仓 run 取消，界面上显示 cancelled，容易被误判成构建失败。
-  # 带上事件名后，两类 run 各自独立：被取消的只会是**同一事件**下更早的那次。
   group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: 构建 + 测试 + 安全扫描
+  verify:
+    name: Verify sources and tests
     runs-on: ubuntu-latest
     steps:
-      # service 依赖框架的 1.0.0-SNAPSHOT。框架当前尚未发布正式版本，
-      # CI 上必须先把框架装进本地仓库，否则依赖解析必然失败。
-      # 两个仓都是 public，用默认 token 检出即可。
-      - name: 检出 mars-cloud-framework（依赖来源）
+      - name: Checkout framework
         uses: actions/checkout@v7
         with:
           repository: csthink/mars-cloud-framework
-          path: .deps/mars-cloud-framework
-
-      - name: 检出本仓
+          path: sources/framework
+          fetch-depth: 0
+          ref: main
+      - name: Checkout service
         uses: actions/checkout@v7
         with:
-          path: .deps/mars-cloud-service
-
-      - name: 安装 JDK 25
+          repository: csthink/mars-cloud-service
+          path: sources/service
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Resolve source commits
+        id: sources
+        env:
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT_REF" = refs/heads/main ]; then mode=main; else mode=candidate; fi
+          python3 sources/service/tools/resolve-framework.py \
+            --framework sources/framework --mode "$mode" --checkout \
+            --output "$RUNNER_TEMP/framework-resolution.json"
+      - name: Install Corretto
+        id: java
         uses: actions/setup-java@v6
         with:
-          distribution: temurin
+          distribution: corretto
           java-version: '25'
           cache: maven
+          cache-dependency-path: |
+            sources/framework/**/pom.xml
+            sources/service/**/pom.xml
 
-      - name: 安装框架到本地仓库
-        working-directory: .deps/mars-cloud-framework
-        run: mvn -B -Dmaven.repo.local="$HOME/.m2/repository" clean install
+      - name: Install Maven
+        id: maven
+        run: |
+          bash sources/framework/tools/install-maven.sh "$RUNNER_TEMP/maven"
+          echo "$RUNNER_TEMP/maven/apache-maven-3.9.14/bin" >> "$GITHUB_PATH"
 
-      - name: 构建并测试本仓
-        working-directory: .deps/mars-cloud-service
-        run: mvn -B -Dmaven.repo.local="$HOME/.m2/repository" clean package
+      - name: Test verification tools
+        id: tools
+        run: |
+          python3 -m unittest discover -s sources/framework/tools/tests -v
+          python3 -m unittest discover -s sources/service/tools/tests -v
+      - name: Build exact sources
+        id: compile
+        env:
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FRAMEWORK_DIR: ${{ github.workspace }}/sources/framework
+          FRAMEWORK_SHA: ${{ steps.sources.outputs.sha }}
+          FRAMEWORK_SOURCE: ${{ steps.sources.outputs.source }}
+          DECLARED_FRAMEWORK: ${{ steps.sources.outputs.declared }}
+        run: |
+          bash sources/framework/tools/verify.sh \
+            --framework "$FRAMEWORK_DIR" --framework-sha "$FRAMEWORK_SHA" \
+            --service "$GITHUB_WORKSPACE/sources/service" \
+            --service-sha "$(git -C sources/service rev-parse HEAD)" \
+            --framework-source "$FRAMEWORK_SOURCE" --declared-framework "$DECLARED_FRAMEWORK" \
+            --purpose service --cache "$HOME/.m2/repository" --output "$RUNNER_TEMP/verification"
 
-      - name: 公开安全扫描（通用版）
-        working-directory: .deps/mars-cloud-service
-        run: bash tools/check-public-safety-generic.sh .
+      - name: Scan public sources
+        id: scan
+        run: |
+          bash sources/framework/tools/check-public-safety-generic.sh sources/framework
+          bash sources/service/tools/check-public-safety-generic.sh sources/service
 
-      # 说明：**没有**单独的「关键词扫描 secret」步骤。
-      # 那种写法（命中 password/secret 等词即报警）在真实仓库上全是误报——
-      # 它会打中扫描脚本自身、测试代码、以及 `password: ""` 这类合法配置。
-      # 通用扫描里的「凭据」规则已经更准：**关键词 + 赋值 + 8 位以上字面量**，
-      # 占位符与空值不匹配。要更强的检测应上专用工具（gitleaks 等），而不是手写关键词 grep。
-
-      - name: 上传测试报告
+      - name: Upload verification evidence
+        id: evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: surefire-reports
-          path: .deps/mars-cloud-service/**/target/surefire-reports/
-          if-no-files-found: ignore
+          name: verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/verification/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Require every verification step
+        if: always()
+        env:
+          OUTCOMES: ${{ toJSON(steps) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          steps = json.loads(os.environ['OUTCOMES'])
+          required = ('sources', 'java', 'maven', 'tools', 'compile', 'scan', 'evidence')
+          failed = [name for name in required if steps.get(name, {}).get('outcome') != 'success']
+          if failed:
+              raise SystemExit('Required steps did not succeed: ' + ', '.join(failed))
+          PYCODE
+
+  build:
+    name: 构建 + 测试 + 安全扫描
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful verification
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success

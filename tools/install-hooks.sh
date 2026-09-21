@@ -12,12 +12,13 @@
 #   2. hook 位于 .git/ 下，**不在版本库里**——它无法被 review，也无法随仓分发，
 #      所以它必须是「薄」的：真正的逻辑留在可 review、可版本化的仓内脚本里。
 #
-# 参见 ADR 0006（私有设计仓）与 docs/ci.md。
+# 使用说明见 docs/ci.md。
 
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-HOOK="$REPO_ROOT/.git/hooks/pre-commit"
+HOOK="$(git rev-parse --git-path hooks/pre-commit)"
+mkdir -p "$(dirname "$HOOK")"
 SCANNER="$REPO_ROOT/tools/check-public-safety-generic.sh"
 
 if [ ! -f "$SCANNER" ]; then
@@ -40,7 +41,10 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
 # -z 处理含空格与中文的文件名
-mapfile -d '' -t STAGED < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null || true)
+STAGED=()
+while IFS= read -r -d '' path; do
+  STAGED+=("$path")
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
 
 if [ "${#STAGED[@]}" -eq 0 ]; then
   exit 0

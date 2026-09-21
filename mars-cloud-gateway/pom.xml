@@ -99,6 +99,22 @@
         </dependency>
     </dependencies>
 
+    <!-- Netty's macOS resolver requires a classifier matching the host architecture. -->
+    <profiles>
+        <profile>
+            <id>macos-aarch64-dns</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-resolver-dns-native-macos</artifactId>
+                    <classifier>osx-aarch_64</classifier>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
         <finalName>${project.artifactId}</finalName>
         <plugins>

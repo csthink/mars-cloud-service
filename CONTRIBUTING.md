@@ -48,7 +48,7 @@
 
 ## 构建与验证
 
-需要 **JDK 25**，且两个仓需放在**同一个父目录下**（本仓通过相对路径取框架的构建产物）。
+正式验证使用 **Corretto JDK 25 与 Maven 3.9.14**，通过 `tools/verify.sh` 委托给所选 framework，固定两仓提交并生成完整报告，见 [docs/ci.md](docs/ci.md)。以下 Maven 命令用于开发迭代，示例假定两个仓平级。
 
 ```bash
 mvn -f ../mars-cloud-framework/pom.xml clean install   # 先装框架（框架改动后需重装）
