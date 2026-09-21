@@ -52,6 +52,8 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 
 `./verify-security-e2e.sh` 通过测试 classpath 启动临时签发器，验证正常打包 jar 的认证与权限行为，并在结束时清理临时令牌。原有三份验收脚本也自动使用同一辅助流程。
 
+本地中间件可由 [dev/README.md](dev/README.md) 的统一入口启动、初始化与验证。
+
 ## 服务
 
 | 服务 | 端口 | 错误码区间 | 职责 | 状态 |

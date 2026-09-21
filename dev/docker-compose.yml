@@ -1,0 +1,482 @@
+{
+  "services": {
+    "nacos": {
+      "image": "${NACOS_IMAGE:?}",
+      "restart": "always",
+      "cpus": 1,
+      "mem_limit": "1536m",
+      "memswap_limit": "1536m",
+      "pids_limit": 512,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8848/nacos/v3/admin/core/state/liveness >/dev/null && curl -fsS http://localhost:8080/v3/console/health/liveness >/dev/null"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_NACOS_HTTP:?}:8848",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_NACOS_GRPC:?}:9848",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_NACOS_CONSOLE:?}:8080"
+      ],
+      "volumes": [
+        "nacos-data:${NACOS_IMAGE_HOME:?}/data",
+        "nacos-logs:${NACOS_IMAGE_HOME:?}/logs"
+      ],
+      "environment": {
+        "MODE": "standalone",
+        "NACOS_AUTH_ENABLE": "true",
+        "NACOS_AUTH_TOKEN": "${NACOS_AUTH_TOKEN:?}",
+        "NACOS_AUTH_IDENTITY_KEY": "${NACOS_AUTH_IDENTITY_KEY:?}",
+        "NACOS_AUTH_IDENTITY_VALUE": "${NACOS_AUTH_IDENTITY_VALUE:?}",
+        "JVM_XMS": "256m",
+        "JVM_XMX": "768m",
+        "JVM_XMN": "128m"
+      }
+    },
+    "rocketmq-nameserver": {
+      "image": "${ROCKETMQ_IMAGE:?}",
+      "restart": "always",
+      "cpus": 0.5,
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 256,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "java -Xms32m -Xmx128m -cp '../conf:../lib/*' org.apache.rocketmq.tools.command.MQAdminStartup clusterList -n localhost:9876 >/dev/null"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_NAMESERVER:?}:9876"
+      ],
+      "volumes": [
+        "nameserver-logs:${ROCKETMQ_IMAGE_HOME:?}/logs"
+      ],
+      "command": [
+        "sh",
+        "mqnamesrv"
+      ],
+      "environment": {
+        "JAVA_OPT_EXT": "-Xms128m -Xmx256m -Xmn64m"
+      }
+    },
+    "rocketmq-broker": {
+      "image": "${ROCKETMQ_IMAGE:?}",
+      "restart": "always",
+      "cpus": 2,
+      "mem_limit": "2048m",
+      "memswap_limit": "2048m",
+      "pids_limit": 512,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "java -Xms32m -Xmx128m -cp '../conf:../lib/*' org.apache.rocketmq.tools.command.MQAdminStartup brokerStatus -b localhost:${PORT_MQ_BROKER:?} >/dev/null"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_BROKER:?}:${PORT_MQ_BROKER:?}",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_VIP:?}:${PORT_MQ_VIP:?}",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_HA:?}:${PORT_MQ_HA:?}",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_PROXY_HTTP:?}:8081",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MQ_PROXY_GRPC:?}:8082"
+      ],
+      "volumes": [
+        "broker-data:${ROCKETMQ_IMAGE_HOME:?}/store",
+        "broker-logs:${ROCKETMQ_IMAGE_HOME:?}/logs",
+        "${MIDDLEWARE_STATE:?}/broker.conf:${ROCKETMQ_IMAGE_HOME:?}/broker.conf:ro"
+      ],
+      "command": [
+        "sh",
+        "mqbroker",
+        "--enable-proxy",
+        "-c",
+        "${ROCKETMQ_IMAGE_HOME:?}/broker.conf"
+      ],
+      "environment": {
+        "NAMESRV_ADDR": "rocketmq-nameserver:9876",
+        "JAVA_OPT_EXT": "-Xms256m -Xmx1024m -Xmn128m"
+      },
+      "depends_on": {
+        "rocketmq-nameserver": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "mysql": {
+      "image": "${MYSQL_IMAGE:?}",
+      "restart": "always",
+      "cpus": 1,
+      "mem_limit": "1024m",
+      "memswap_limit": "1024m",
+      "pids_limit": 256,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "mysql --defaults-extra-file=/run/local/mysql.cnf -Nse \"SELECT 1\" >/dev/null"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_MYSQL:?}:3306"
+      ],
+      "volumes": [
+        "mysql-data:/var/lib/mysql",
+        "${MIDDLEWARE_STATE:?}/mysql-root:/run/local/root:ro",
+        "${MIDDLEWARE_STATE:?}/mysql.cnf:/run/local/mysql.cnf:ro"
+      ],
+      "environment": {
+        "MYSQL_ROOT_PASSWORD_FILE": "/run/local/root"
+      },
+      "command": [
+        "--innodb-buffer-pool-size=402653184",
+        "--max-connections=100",
+        "--log-error-verbosity=2"
+      ]
+    },
+    "redis": {
+      "image": "${REDIS_IMAGE:?}",
+      "restart": "always",
+      "cpus": 0.5,
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 128,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "REDISCLI_AUTH=\"$$(cat /run/local/redis-password)\" redis-cli ping | grep -qx PONG"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_REDIS:?}:6379"
+      ],
+      "volumes": [
+        "redis-data:/data",
+        "${MIDDLEWARE_STATE:?}/redis.conf:/usr/local/etc/redis/redis.conf:ro",
+        "${MIDDLEWARE_STATE:?}/redis-password:/run/local/redis-password:ro"
+      ],
+      "command": [
+        "redis-server",
+        "/usr/local/etc/redis/redis.conf"
+      ],
+      "entrypoint": [
+        "sh",
+        "-c",
+        "cp /usr/local/etc/redis/redis.conf /data/.redis.conf && chown redis:redis /data/.redis.conf && chmod 600 /data/.redis.conf && exec docker-entrypoint.sh redis-server /data/.redis.conf"
+      ]
+    },
+    "jaeger": {
+      "image": "${JAEGER_LOCAL_IMAGE:?}",
+      "restart": "always",
+      "cpus": 0.5,
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 256,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "/usr/local/bin/busybox wget -q -O /dev/null http://localhost:13133/status"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_JAEGER_UI:?}:16686",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_OTLP_GRPC:?}:4317",
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_OTLP_HTTP:?}:4318"
+      ],
+      "volumes": [
+        "jaeger-data:/data",
+        "${MIDDLEWARE_SOURCE:?}/config/jaeger.yaml:/jaeger/config.yaml:ro"
+      ],
+      "command": [
+        "--config",
+        "/jaeger/config.yaml"
+      ]
+    },
+    "loki": {
+      "image": "${LOKI_IMAGE:?}",
+      "restart": "always",
+      "cpus": 0.5,
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 256,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://localhost:3100/ready"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_LOKI:?}:3100"
+      ],
+      "volumes": [
+        "loki-data:/loki",
+        "${MIDDLEWARE_SOURCE:?}/config/loki.yaml:/etc/loki/config.yaml:ro"
+      ],
+      "command": [
+        "-config.file=/etc/loki/config.yaml"
+      ]
+    },
+    "grafana": {
+      "image": "${GRAFANA_IMAGE:?}",
+      "restart": "always",
+      "cpus": 0.5,
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 256,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://localhost:3000/api/health"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_GRAFANA:?}:3000"
+      ],
+      "volumes": [
+        "grafana-data:/var/lib/grafana",
+        "${MIDDLEWARE_SOURCE:?}/config/datasources.yaml:/etc/grafana/provisioning/datasources/local.yaml:ro"
+      ],
+      "environment": {
+        "GF_SECURITY_ADMIN_USER": "admin",
+        "GF_SECURITY_ADMIN_PASSWORD": "${GRAFANA_PASSWORD:?}",
+        "GF_AUTH_ANONYMOUS_ENABLED": "false",
+        "GF_USERS_ALLOW_SIGN_UP": "false",
+        "GF_ANALYTICS_REPORTING_ENABLED": "false",
+        "GF_ANALYTICS_CHECK_FOR_UPDATES": "false"
+      },
+      "depends_on": {
+        "jaeger": {
+          "condition": "service_healthy"
+        },
+        "loki": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "xxl-job-admin": {
+      "image": "${XXL_JOB_ADMIN_IMAGE:?}",
+      "restart": "always",
+      "cpus": 1,
+      "mem_limit": "768m",
+      "memswap_limit": "768m",
+      "pids_limit": 512,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "bash /opt/local/health-xxl.sh"
+        ],
+        "interval": "20s",
+        "timeout": "15s",
+        "retries": 15,
+        "start_period": "90s"
+      },
+      "ports": [
+        "${MIDDLEWARE_BIND_ADDRESS:?}:${PORT_XXL:?}:8080"
+      ],
+      "volumes": [
+        "xxl-logs:/data/applogs",
+        "${MIDDLEWARE_STATE:?}/xxl.properties:/run/local/application.properties:ro",
+        "${MIDDLEWARE_SOURCE:?}/init/health-xxl.sh:/opt/local/health-xxl.sh:ro"
+      ],
+      "platform": "linux/amd64",
+      "entrypoint": [
+        "java",
+        "-Xms128m",
+        "-Xmx384m",
+        "-DLOG_HOME=/data/applogs",
+        "-jar",
+        "/app.jar",
+        "--spring.config.additional-location=file:/run/local/application.properties"
+      ],
+      "depends_on": {
+        "mysql": {
+          "condition": "service_healthy"
+        }
+      }
+    }
+  },
+  "volumes": {
+    "broker-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "broker-logs": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "grafana-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "jaeger-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "loki-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "mysql-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "nacos-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "nacos-logs": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "nameserver-logs": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "redis-data": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    },
+    "xxl-logs": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    }
+  },
+  "networks": {
+    "default": {
+      "labels": {
+        "io.mars.middleware.owner": "${MIDDLEWARE_OWNER:?}"
+      }
+    }
+  }
+}

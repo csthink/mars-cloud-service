@@ -65,6 +65,7 @@ jobs:
         run: |
           python3 -m unittest discover -s sources/framework/tools/tests -v
           python3 -m unittest discover -s sources/service/tools/tests -v
+          python3 -m unittest discover -s sources/service/dev/tests -v
       - name: Build exact sources
         id: compile
         env:

@@ -36,3 +36,6 @@ logs/
 
 # Python verification tools
 __pycache__/
+
+# Local middleware state and generated credentials
+dev/.local/

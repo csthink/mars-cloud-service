@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "images": {
+    "nacos": {
+      "tag": "nacos/nacos-server:v3.1.2",
+      "digest": "sha256:65cf0ad9c84e45f0112cbef0acccb5541198b919f64d7e6ac61dd1f9d8c1509c",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      ]
+    },
+    "rocketmq": {
+      "tag": "apache/rocketmq:5.3.2",
+      "digest": "sha256:4a80ff5cd4b0a3d3ef6dc338ce2028a85bd995648cb3aa5c3e753746d2dbc587",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      ]
+    },
+    "mysql": {
+      "tag": "mysql:8.4.10",
+      "digest": "sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "variant": "v8"
+        }
+      ]
+    },
+    "redis": {
+      "tag": "redis:8.2.5",
+      "digest": "sha256:510f41a055ce2b9fc08667e08f1fb91f12b1770a307206a88c149c2efb077a8e",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "variant": "v8"
+        }
+      ]
+    },
+    "jaeger": {
+      "tag": "jaegertracing/jaeger:2.21.0",
+      "digest": "sha256:3d0ac795ff98aa04d1be04311d2dac6c25b4bfc8322dc02e53bc5b170c5018c3",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      ]
+    },
+    "loki": {
+      "tag": "grafana/loki:3.7.0",
+      "digest": "sha256:c316b7c7589a5eeca843b6926c7446149d18300b79ac8538dc4ae063bc478da2",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      ]
+    },
+    "grafana": {
+      "tag": "grafana/grafana:13.2.1",
+      "digest": "sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      ]
+    },
+    "xxl-job-admin": {
+      "tag": "xuxueli/xxl-job-admin:3.4.2",
+      "digest": "sha256:fa6ad9343f41be414446685f00c28456444577c8209948760c8089b493c39e35",
+      "platforms": [
+        {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      ]
+    },
+    "busybox": {
+      "tag": "busybox:1.37.0-musl",
+      "digest": "sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "variant": "v8"
+        }
+      ]
+    }
+  }
+}
