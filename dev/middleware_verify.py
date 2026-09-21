@@ -38,7 +38,7 @@ def verify_limits(e, rows):
         labels = info['Config']['Labels']
         require(labels.get('io.mars.middleware.source') == e.source_digest(), 'Running container belongs to another source candidate')
         require(labels.get('com.docker.compose.config-hash') == expected_hashes[row['service']], 'Running Compose configuration differs')
-        image_key = definition[row['service']]['image'][2:-2]
+        image_key = definition[row['service']]['image'][2:-3]
         expected_image = env[image_key]
         image_info = json.loads(e.docker('image', 'inspect', expected_image).stdout)[0]
         require(info['Image'] == image_info['Id'], 'Running image differs from the fixed image')
