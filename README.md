@@ -12,6 +12,8 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 
 ## 快速开始
 
+使用 IntelliJ IDEA 本地调试时，请按 [IDEA 本地运行指南](docs/idea-local-development.md) 完成框架安装、中间件准备、`.env` 加载、测试签发器与三个服务的启动及健康检查。
+
 需要 **JDK 25** 与 Maven。仓内 `.mvn/jvm.config` 会给 Maven 进程带上
 `--sun-misc-unsafe-memory-access=allow`（Lombok 在 JDK 24 及以上编译期需要），无需手动设置；
 应用进程自己需要的同名参数见 [`docs/deployment.md`](docs/deployment.md) 的「JVM 参数」一节。
@@ -90,6 +92,7 @@ cd mars-cloud-gateway && ./verify-e2e.sh          # 真进程验收，含「网�
 
 ## 文档
 
+- [IDEA 本地运行指南](docs/idea-local-development.md)：从安装 framework 到启动 gateway、sample、UPMS，含启动配置与常见问题
 - [docs/services.md](docs/services.md) —— 服务清单、职责边界与错误码子区间占用表
 - [docs/deployment.md](docs/deployment.md) —— 构建产物、启动方式、配置来源、健康检查、上线前检查清单
 - [docs/ci.md](docs/ci.md) —— 流水线内容与跨仓触发
