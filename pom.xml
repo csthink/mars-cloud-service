@@ -24,6 +24,7 @@
         <module>mars-cloud-gateway</module>
         <module>mars-cloud-upms-service</module>
         <module>mars-cloud-sample-service</module>
+        <module>mars-cloud-monitor</module>
     </modules>
 
 </project>

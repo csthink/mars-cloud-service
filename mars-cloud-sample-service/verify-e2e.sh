@@ -54,7 +54,10 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 PORT="${SAMPLE_PORT:-8103}"
+# 管理端点在管理端口上，取值是业务端口加 1000，由可观测性组件推导。
+MANAGEMENT_PORT="${SAMPLE_MANAGEMENT_PORT:-$((PORT + 1000))}"
 BASE="http://127.0.0.1:${PORT}/sample"
+MANAGEMENT="http://127.0.0.1:${MANAGEMENT_PORT}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
@@ -63,14 +66,14 @@ fi
 
 # 端口必须空闲：否则本脚本起不来自己的实例，健康检查却会打到**已在跑的旧实例**上，
 # 于是所有断言都「通过」而其实验的是别的进程——这种假绿比失败更危险。
-if security_curl -fsS "$BASE/actuator/health" >/dev/null 2>&1; then
-  echo "端口 ${PORT} 上已经有服务在响应。"
+if security_curl -fsS "$MANAGEMENT/actuator/health" >/dev/null 2>&1; then
+  echo "端口 ${MANAGEMENT_PORT} 上已经有服务在响应。"
   echo "本脚本需要自己启动实例，请先停掉它（例如 Ctrl-C），或用 SAMPLE_PORT 换一个端口。"
   exit 2
 fi
 
 # 拒绝任何已占用端口，避免误验已有进程。
-python3 - "$PORT" <<'PY'
+python3 - "$PORT" "$MANAGEMENT_PORT" <<'PY'
 import socket, sys
 for port in sys.argv[1:]:
     with socket.socket() as probe:
@@ -96,7 +99,7 @@ PID=$!
 echo "等待健康检查通过..."
 ready=0
 for _ in $(seq 1 60); do
-  if security_curl -fsS "$BASE/actuator/health" >/dev/null 2>&1; then
+  if security_curl -fsS "$MANAGEMENT/actuator/health" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -111,8 +114,8 @@ fi
 
 echo
 echo "① 健康检查"
-check "actuator/health 为 UP" "UP" \
-  "$(security_curl -fsS "$BASE/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
+check "管理端口的 actuator/health 为 UP" "UP" \
+  "$(security_curl -fsS "$MANAGEMENT/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
 
 echo
 echo "② 成功路径：业务对象被包成信封"
