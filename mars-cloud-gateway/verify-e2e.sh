@@ -83,8 +83,13 @@ if [ -f "$ENV_FILE" ]; then
 fi
 GATEWAY_PORT="${GATEWAY_PORT:-8100}"
 UPMS_PORT="${UPMS_PORT:-8102}"
+# 管理端点在管理端口上，取值是业务端口加 1000，由可观测性组件推导。
+GATEWAY_MANAGEMENT_PORT="${GATEWAY_MANAGEMENT_PORT:-$((GATEWAY_PORT + 1000))}"
+UPMS_MANAGEMENT_PORT="${UPMS_MANAGEMENT_PORT:-$((UPMS_PORT + 1000))}"
 GATEWAY="http://127.0.0.1:${GATEWAY_PORT}"
 UPMS="http://127.0.0.1:${UPMS_PORT}"
+GATEWAY_MANAGEMENT="http://127.0.0.1:${GATEWAY_MANAGEMENT_PORT}"
+UPMS_MANAGEMENT="http://127.0.0.1:${UPMS_MANAGEMENT_PORT}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
@@ -92,7 +97,7 @@ if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${N
 fi
 
 # 两个端口都必须空闲：否则健康检查会打到已在跑的旧实例上，所有断言都「通过」而其实验的是别的进程。
-for probe in "$GATEWAY/actuator/health" "$UPMS/upms/actuator/health"; do
+for probe in "$GATEWAY_MANAGEMENT/actuator/health" "$UPMS_MANAGEMENT/actuator/health"; do
   if security_curl -fsS "$probe" >/dev/null 2>&1; then
     echo "$probe 已经有服务在响应。本脚本需要自己启动实例，请先停掉它，或用 GATEWAY_PORT / UPMS_PORT 换端口。"
     exit 2
@@ -115,15 +120,18 @@ SECURITY_CURL_HEADER="$SECURITY_TEST_DIR/admin.headers"
 echo "① 先启动网关（端口 $GATEWAY_PORT，日志 $GATEWAY_LOG）"
 SERVER_PORT="$GATEWAY_PORT" java "${JVM_FLAGS[@]}" -jar "$GATEWAY_JAR" >"$GATEWAY_LOG" 2>&1 &
 GATEWAY_PID=$!
-if ! elapsed=$(wait_until_ok "$GATEWAY/actuator/health" 60); then
+if ! elapsed=$(wait_until_ok "$GATEWAY_MANAGEMENT/actuator/health" 60); then
   echo "网关未在 60 秒内就绪，日志末尾："; tail -30 "$GATEWAY_LOG"; exit 1
 fi
-check "网关 actuator/health 为 UP" "UP" \
-  "$(security_curl -fsS "$GATEWAY/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
+check "网关管理端口的 actuator/health 为 UP" "UP" \
+  "$(security_curl -fsS "$GATEWAY_MANAGEMENT/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
 
 echo
 echo "② UPMS 尚未启动：经网关访问必须是信封式 503（63002），不是裸错误页"
-body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/upms/actuator/health")
+# 用真实业务端点探测：管理端点已挪到管理端口，业务端口上不再有 actuator，
+# 经网关访问那条路径得到的是「没有路由」而不是「没有实例」。
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
+  -H 'Content-Type: application/json' -d '{"caller_id":"local-admin","action":"view","resource":"demo:view:domain:kubernetes-ops"}')
 check "HTTP 状态码" "503" "$(printf '%s' "$body" | tail -1)"
 contains "success 为 false" '"success":false' "$body"
 contains "错误码为 63002" '"code":"63002"' "$body"
@@ -138,20 +146,30 @@ echo
 echo "④ 再启动 UPMS（端口 $UPMS_PORT，日志 $UPMS_LOG）"
 SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$UPMS_LOG" 2>&1 &
 UPMS_PID=$!
-if ! elapsed=$(wait_until_ok "$UPMS/upms/actuator/health" 90); then
+if ! elapsed=$(wait_until_ok "$UPMS_MANAGEMENT/actuator/health" 90); then
   echo "UPMS 未在 90 秒内就绪，日志末尾："; tail -30 "$UPMS_LOG"; exit 1
 fi
 printf '  ok   UPMS 直连就绪（%ss）\n' "$elapsed"; pass=$((pass + 1))
 
 echo
 echo "⑤ 【回归项】网关先起、UPMS 后起：网关不重启也必须发现新实例"
-if elapsed=$(wait_until_ok "$GATEWAY/upms/actuator/health" "$DISCOVERY_TIMEOUT"); then
+discovery_probe() {
+  security_curl -s -o /dev/null -w '%{http_code}' -X POST "$GATEWAY/upms/v1/decision" \
+    -H 'Content-Type: application/json' \
+    -d '{"caller_id":"local-admin","action":"view","resource":"demo:view:domain:kubernetes-ops"}'
+}
+elapsed=0
+while [ "$elapsed" -lt "$DISCOVERY_TIMEOUT" ]; do
+  [ "$(discovery_probe)" = "200" ] && break
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+if [ "$(discovery_probe)" = "200" ]; then
   printf '  ok   经网关访问 UPMS 在 %ss 内变为可达\n' "$elapsed"; pass=$((pass + 1))
 else
   printf '  FAIL 等待 %ss 后经网关仍不可达（服务发现未更新）\n' "$DISCOVERY_TIMEOUT"; fail=$((fail + 1))
 fi
-check "经网关的 UPMS 健康检查为 UP" "UP" \
-  "$(security_curl -s "$GATEWAY/upms/actuator/health" | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p')"
+check "经网关的 UPMS 决策调用返回 200" "200" "$(discovery_probe)"
 
 echo
 echo "⑥ 业务调用经网关成功：种子快照里 local-admin 持有 demo 平台全部能力"

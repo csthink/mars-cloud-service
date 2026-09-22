@@ -6,7 +6,8 @@ import time
 import urllib.error
 import urllib.request
 
-sample, upms, directory, phase = sys.argv[1:]
+# 健康探针在管理端口上，业务断言仍走业务端口，所以两组地址都要传进来。
+sample, upms, sample_management, upms_management, directory, phase = sys.argv[1:]
 tokens = pathlib.Path(directory)
 passed = 0
 
@@ -40,10 +41,12 @@ if phase == 'unavailable':
     status, body, _, _ = request(sample, '/v1/security/decision', 'admin')
     check('PDP shutdown denies method with 503 / 62004', status == 503 and body.get('code') == '62004')
 else:
-    status, body, _, _ = request(sample, '/actuator/health')
-    check('anonymous sample health probe', status == 200 and body.get('status') == 'UP')
-    status, body, _, _ = request(upms, '/actuator/health')
-    check('anonymous UPMS health probe', status == 200 and body.get('status') == 'UP')
+    status, body, _, _ = request(sample_management, '/actuator/health')
+    check('anonymous sample health probe on the management port', status == 200 and body.get('status') == 'UP')
+    status, body, _, _ = request(upms_management, '/actuator/health')
+    check('anonymous UPMS health probe on the management port', status == 200 and body.get('status') == 'UP')
+    status, _, _, _ = request(sample, '/actuator/health')
+    check('sample business port exposes no actuator', status != 200)
     status, body, headers, _ = request(sample, '/v1/security/me')
     check('missing token returns 401 / 62001', status == 401 and body.get('code') == '62001')
     check('missing token includes Bearer challenge', any(k.lower() == 'www-authenticate' and v == 'Bearer' for k, v in headers.items()))

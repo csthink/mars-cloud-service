@@ -18,15 +18,20 @@ fi
 : "${NACOS_PASSWORD:?Nacos password is required}"
 SAMPLE_PORT="${SAMPLE_PORT:-8103}"
 UPMS_PORT="${UPMS_PORT:-8102}"
+# 管理端点在管理端口上，取值是业务端口加 1000。
+SAMPLE_MANAGEMENT_PORT="${SAMPLE_MANAGEMENT_PORT:-$((SAMPLE_PORT + 1000))}"
+UPMS_MANAGEMENT_PORT="${UPMS_MANAGEMENT_PORT:-$((UPMS_PORT + 1000))}"
 SAMPLE="http://127.0.0.1:$SAMPLE_PORT/sample"
 UPMS="http://127.0.0.1:$UPMS_PORT/upms"
+SAMPLE_MANAGEMENT="http://127.0.0.1:$SAMPLE_MANAGEMENT_PORT"
+UPMS_MANAGEMENT="http://127.0.0.1:$UPMS_MANAGEMENT_PORT"
 SAMPLE_JAR="$SERVICE_DIR/mars-cloud-sample-service/target/mars-cloud-sample-service.jar"
 UPMS_JAR="$SERVICE_DIR/mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
 [ -f "$SAMPLE_JAR" ] && [ -f "$UPMS_JAR" ] || { echo "Build sample and UPMS first"; exit 2; }
 LOG_DIR="${SECURITY_E2E_LOG_DIR:-$(mktemp -d)}"
 mkdir -p "$LOG_DIR"
 JVM_FLAGS=(--sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED)
-python3 - "$SAMPLE_PORT" "$UPMS_PORT" <<'PYCODE'
+python3 - "$SAMPLE_PORT" "$UPMS_PORT" "$SAMPLE_MANAGEMENT_PORT" "$UPMS_MANAGEMENT_PORT" <<'PYCODE'
 import socket, sys
 for value in sys.argv[1:]:
     with socket.socket() as probe:
@@ -58,20 +63,20 @@ wait_ready() {
 }
 SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$LOG_DIR/upms.log" 2>&1 &
 UPMS_PID=$!
-wait_ready "$UPMS" "$UPMS_PID"
+wait_ready "$UPMS_MANAGEMENT" "$UPMS_PID"
 SERVER_PORT="$SAMPLE_PORT" java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" >"$LOG_DIR/sample-development.log" 2>&1 &
 SAMPLE_PID=$!
-wait_ready "$SAMPLE" "$SAMPLE_PID"
-python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SECURITY_TEST_DIR" development
+wait_ready "$SAMPLE_MANAGEMENT" "$SAMPLE_PID"
+python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SAMPLE_MANAGEMENT" "$UPMS_MANAGEMENT" "$SECURITY_TEST_DIR" development
 stop_owned "$SAMPLE_PID"
 SAMPLE_PID=""
 SERVER_PORT="$SAMPLE_PORT" MARS_ENV_DEV_PROFILES=disabled java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" >"$LOG_DIR/sample-production.log" 2>&1 &
 SAMPLE_PID=$!
-wait_ready "$SAMPLE" "$SAMPLE_PID"
-python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SECURITY_TEST_DIR" production
+wait_ready "$SAMPLE_MANAGEMENT" "$SAMPLE_PID"
+python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SAMPLE_MANAGEMENT" "$UPMS_MANAGEMENT" "$SECURITY_TEST_DIR" production
 stop_owned "$UPMS_PID"
 UPMS_PID=""
-python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SECURITY_TEST_DIR" unavailable
+python3 "$SERVICE_DIR/scripts/verify-security-http.py" "$SAMPLE" "$UPMS" "$SAMPLE_MANAGEMENT" "$UPMS_MANAGEMENT" "$SECURITY_TEST_DIR" unavailable
 verify_no_test_credentials "$LOG_DIR/upms.log" "$LOG_DIR/sample-development.log" "$LOG_DIR/sample-production.log"
 python3 - "$LOG_DIR" <<'PYCODE'
 import pathlib, sys

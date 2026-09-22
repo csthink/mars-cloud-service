@@ -75,15 +75,20 @@ if [ -f "$ENV_FILE" ]; then
 fi
 SAMPLE_PORT="${SAMPLE_PORT:-8203}"
 UPMS_PORT="${UPMS_PORT:-8202}"
+# 管理端点在管理端口上，取值是业务端口加 1000。
+SAMPLE_MANAGEMENT_PORT="${SAMPLE_MANAGEMENT_PORT:-$((SAMPLE_PORT + 1000))}"
+UPMS_MANAGEMENT_PORT="${UPMS_MANAGEMENT_PORT:-$((UPMS_PORT + 1000))}"
 SAMPLE="http://127.0.0.1:${SAMPLE_PORT}/sample"
 UPMS="http://127.0.0.1:${UPMS_PORT}/upms"
+SAMPLE_MANAGEMENT="http://127.0.0.1:${SAMPLE_MANAGEMENT_PORT}"
+UPMS_MANAGEMENT="http://127.0.0.1:${UPMS_MANAGEMENT_PORT}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
 if [ -z "${NACOS_NAMESPACE_ID:-}" ] || [ -z "${NACOS_USERNAME:-}" ] || [ -z "${NACOS_PASSWORD:-}" ]; then
   echo "错误：NACOS_NAMESPACE_ID、NACOS_USERNAME 与 NACOS_PASSWORD 都不能为空。" >&2
   exit 2
 fi
 
-for probe in "$SAMPLE/actuator/health" "$UPMS/actuator/health"; do
+for probe in "$SAMPLE_MANAGEMENT/actuator/health" "$UPMS_MANAGEMENT/actuator/health"; do
   if security_curl -fsS "$probe" >/dev/null 2>&1; then
     echo "$probe 已经有服务在响应。本脚本必须自己启动实例，请先停掉它或更换端口。"
     exit 2
@@ -91,7 +96,7 @@ for probe in "$SAMPLE/actuator/health" "$UPMS/actuator/health"; do
 done
 
 # 拒绝任何已占用端口，避免误验已有进程。
-python3 - "$SAMPLE_PORT" "$UPMS_PORT" <<'PY'
+python3 - "$SAMPLE_PORT" "$UPMS_PORT" "$SAMPLE_MANAGEMENT_PORT" "$UPMS_MANAGEMENT_PORT" <<'PY'
 import socket, sys
 for port in sys.argv[1:]:
     with socket.socket() as probe:
@@ -127,7 +132,7 @@ echo "① 启动 UPMS（端口 $UPMS_PORT，日志 $UPMS_LOG）"
 SERVER_PORT="$UPMS_PORT" SPRING_CLOUD_NACOS_DISCOVERY_IP=127.0.0.1 \
 SPRING_CLOUD_NACOS_DISCOVERY_PORT="$PROXY_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$UPMS_LOG" 2>&1 &
 UPMS_PID=$!
-if ! elapsed=$(wait_until_ok "$UPMS/actuator/health" 90); then
+if ! elapsed=$(wait_until_ok "$UPMS_MANAGEMENT/actuator/health" 90); then
   echo "UPMS 未在 90 秒内就绪，日志末尾："; tail -30 "$UPMS_LOG"; exit 1
 fi
 printf '  ok   UPMS 就绪（%ss）\n' "$elapsed"; pass=$((pass + 1))
@@ -136,7 +141,7 @@ echo
 echo "② 启动 sample（端口 $SAMPLE_PORT，日志 $SAMPLE_LOG）"
 SERVER_PORT="$SAMPLE_PORT" java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" >"$SAMPLE_LOG" 2>&1 &
 SAMPLE_PID=$!
-if ! elapsed=$(wait_until_ok "$SAMPLE/actuator/health" 90); then
+if ! elapsed=$(wait_until_ok "$SAMPLE_MANAGEMENT/actuator/health" 90); then
   echo "sample 未在 90 秒内就绪，日志末尾："; tail -30 "$SAMPLE_LOG"; exit 1
 fi
 printf '  ok   sample 就绪（%ss）\n' "$elapsed"; pass=$((pass + 1))
