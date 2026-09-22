@@ -40,7 +40,7 @@ python3 dev/middleware.py down --project mars-lab-check --offset 30000
 
 初始化另外建立本项目专用的 Nacos 客户端账号。`export-env` 使用该账号的独立凭据，不输出管理员凭据；旧状态需成功执行新版 `up` 后才能导出。客户端可读写已初始化 Namespace 的配置并注册、发现服务，也可列出 Namespace；账号、角色和权限管理仍由管理员执行。原环境的客户端连接应保留对应 Namespace ID，不能直接用默认编号 0 的导出值替换。
 
-xxl-job 使用官方 AMD64 镜像，在 ARM64 宿主机上需要 Docker 模拟支持；初始化只建立停止状态的本地验证任务，没有业务执行器。Jaeger 保留 48 小时追踪，Loki 保留 48 小时日志。镜像版本、digest、平台与初始化来源分别见 `images.lock.json` 和 `init/NOTICE.md`。Compose 文件采用 JSON 形式的 YAML，便于 Python 标准库和 Compose 共同读取同一份资源配置。
+xxl-job 使用官方 AMD64 镜像，在 ARM64 宿主机上需要 Docker 模拟支持；初始化只建立停止状态的本地验证任务，没有业务执行器。Jaeger 保留 48 小时追踪，Loki 保留 48 小时日志；查询同时覆盖从写前日志恢复的内存数据，避免长时间停机后等待刷盘期间漏查。镜像版本、digest、平台与初始化来源分别见 `images.lock.json` 和 `init/NOTICE.md`。Compose 文件采用 JSON 形式的 YAML，便于 Python 标准库和 Compose 共同读取同一份资源配置。
 
 `verify` 检查容器健康、实际资源限制、配置读写、账号隔离、消息往返、追踪与日志查询、数据源及登录。探测数据带独立标识，第一次成功后后续验证先读回这些数据，报告放在状态目录；数据超过保留期时明确失败，不将过期数据作为重启保留证据。
 
