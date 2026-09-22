@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
+import unicodedata
 from middleware import Failure
 
 
@@ -26,10 +27,13 @@ def normalize(value):
             raise Failure('Invalid Nacos configuration entry')
         if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}', row['namespace']) or row['namespace'] == 'public':
             raise Failure('An explicit non-public Nacos namespace is required')
-        for name in ('group', 'data_id'):
-            if not row[name] or len(row[name]) > 255 or any(ord(c) < 32 or ord(c) == 127 for c in row[name]):
+        for name, limit in (('group', 128), ('data_id', 255)):
+            value = row[name]
+            if not value or value != value.strip() or len(value) > limit or any(
+                    c not in '_-.:' and not (unicodedata.category(c).startswith('L') or unicodedata.category(c) == 'Nd')
+                    for c in value):
                 raise Failure('Invalid Nacos configuration identifier')
-        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', row['type']) or len(row['content'].encode()) > 1024 * 1024:
+        if row['type'] not in {'properties', 'xml', 'json', 'text', 'html', 'yaml', 'toml', 'unset'} or not row['content'].strip() or len(row['content'].encode()) > 1024 * 1024:
             raise Failure('Invalid Nacos configuration type or size')
         key = (row['namespace'], row['group'], row['data_id'])
         if key in keys:
@@ -49,7 +53,7 @@ def unique_object(pairs):
 
 
 def read_document(path):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd) as stream:
         meta = os.fstat(stream.fileno())
         if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.getuid() or meta.st_mode & 0o077 or meta.st_size > 16 * 1024 * 1024:

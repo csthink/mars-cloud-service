@@ -1,6 +1,8 @@
 import copy
 import hashlib
 import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -89,6 +91,16 @@ class ConfigurationState(unittest.TestCase):
         m.protected_write(self.source, '{"schema":1,"schema":1,"configurations":[]}')
         with self.assertRaises(m.Failure): config.read_document(self.source)
 
+    def test_fifo_input_fails_without_waiting_for_a_writer(self):
+        fifo = self.root / 'input-fifo'
+        os.mkfifo(fifo, 0o600)
+        result = subprocess.run([sys.executable, '-B', '-c',
+            'import sys; import middleware_nacos_config as c; c.read_document(sys.argv[1])', str(fifo)],
+            env={**os.environ, 'PYTHONPATH': str(Path(config.__file__).parent)},
+            capture_output=True, text=True, timeout=3)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('private regular file', result.stderr)
+
     def test_failed_atomic_replace_retains_complete_previous_record(self):
         with self.e.locked():
             self.args.nacos_config_file = None
@@ -101,6 +113,18 @@ class ConfigurationState(unittest.TestCase):
             self.assertEqual(list(self.e.state.glob('.binding-*')), [])
             self.e.load()
             self.assertEqual(self.e.nacos_configurations, document()['configurations'])
+
+    def test_server_rejected_input_is_not_persisted(self):
+        with self.e.locked():
+            self.args.nacos_config_file = None; self.e.load(create=True)
+            original = (self.e.state / 'binding.json').read_bytes()
+            self.args.nacos_config_file = str(self.source)
+            for field, value in [('group', '   '), ('data_id', '\t'), ('content', '\n'), ('type', 'bogus'),
+                                 ('group', 'x'*129), ('data_id', 'bad/name'), ('group', 'a b'), ('data_id', 'a²')]:
+                selected = document(); selected['configurations'][0][field] = value
+                self.write(selected)
+                with self.subTest(field=field), self.assertRaises(m.Failure): self.e.load()
+                self.assertEqual((self.e.state / 'binding.json').read_bytes(), original)
 
     def test_non_up_cannot_adopt_configuration(self):
         with self.e.locked():

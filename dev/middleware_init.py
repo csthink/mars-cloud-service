@@ -184,7 +184,7 @@ def initialize_nacos_client(e):
         api.call('POST', 'auth/role', dict(role=role, username=username))
     expected = {(ns + ':*:*', 'rw') for ns, _, _ in expected_nacos(e)}
     # Listing namespaces supports local environment discovery; account administration is separate.
-    expected.add(('public:*:console//v3/admin/core/namespace', 'r'))
+    expected.add(('/v3/admin/core/namespace', 'r'))
     permissions = paged(api, 'auth/permission/list', role=role)
     actual = {(item['resource'], item['action']) for item in permissions}
     if actual - expected:
