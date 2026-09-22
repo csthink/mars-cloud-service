@@ -23,7 +23,8 @@ schema_config:
 querier:
   query_ingesters_within: 0s
 ingester:
-  query_store_max_look_back_period: -1s
+  # Loki 3.7 uses exactly -1 nanosecond as the unlimited lookback value.
+  query_store_max_look_back_period: -1ns
 compactor:
   working_directory: /loki/compactor
   retention_enabled: true
