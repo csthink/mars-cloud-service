@@ -28,12 +28,21 @@ class GatewayRoutingContractTest {
     private Environment environment;
 
     @Test
-    void upmsRouteTargetsServiceNameThroughLoadBalancer() {
+    void declaredRoutesTargetServiceNamesThroughLoadBalancer() {
         List<Route> routes = routeLocator.getRoutes().collectList().block();
 
         assertThat(routes).isNotNull();
-        assertThat(routes).extracting(Route::getId).containsExactly("upms");
-        assertThat(routes.get(0).getUri()).isEqualTo(URI.create("lb://mars-cloud-upms-service"));
+        // 路由总数一起断言：新增路由必须先让这条用例失败，再由改动者确认它确实该被暴露。
+        assertThat(routes).extracting(Route::getId).containsExactly("upms", "sample");
+        assertThat(route(routes, "upms").getUri()).isEqualTo(URI.create("lb://mars-cloud-upms-service"));
+        assertThat(route(routes, "sample").getUri()).isEqualTo(URI.create("lb://mars-cloud-sample-service"));
+        assertThat(route(routes, "upms").getPredicate().toString()).contains("/upms/**");
+        assertThat(route(routes, "sample").getPredicate().toString()).contains("/sample/**");
+    }
+
+    private static Route route(List<Route> routes, String id) {
+        return routes.stream().filter(route -> id.equals(route.getId())).findFirst()
+                .orElseThrow(() -> new AssertionError("路由表里没有 id 为 " + id + " 的路由"));
     }
 
     @Test

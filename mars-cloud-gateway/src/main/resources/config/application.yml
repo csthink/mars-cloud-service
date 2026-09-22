@@ -22,6 +22,11 @@ spring:
               uri: lb://mars-cloud-upms-service
               predicates:
                 - Path=/upms/**
+            # 示例服务自带 context path /sample，同样原样转发。
+            - id: sample
+              uri: lb://mars-cloud-sample-service
+              predicates:
+                - Path=/sample/**
 
 mars:
   env:
