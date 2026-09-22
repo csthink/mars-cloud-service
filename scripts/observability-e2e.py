@@ -37,8 +37,18 @@ def command_trace_id(paths):
     return 0
 
 
+def require_trace_id(trace_id):
+    """Checks keyed on the trace identifier must refuse an empty one: it matches every line that has none."""
+    if trace_id:
+        return True
+    print('没有链路标识：前一步没有找到三份日志共同的链路标识，这一步无法核对', file=sys.stderr)
+    return False
+
+
 def command_log_fields(trace_id, paths):
     """Every process must have a line carrying that trace, and their span identifiers must differ."""
+    if not require_trace_id(trace_id):
+        return 1
     spans = []
     for path in paths:
         matching = [line for line in structured_lines(path) if line.get('traceId') == trace_id]
@@ -70,6 +80,8 @@ def fetch(url, headers=None, data=None, timeout=20):
 
 def command_trace(query_base, trace_id, expected):
     """The trace backend must return one trace whose processes cover every expected service."""
+    if not require_trace_id(trace_id):
+        return 1
     for attempt in range(10):
         try:
             status, body = fetch(f'{query_base}/api/traces/{trace_id}')
@@ -115,6 +127,8 @@ def command_push_logs(loki_base, run_id, specs):
 
 def command_query_logs(loki_base, run_id, trace_id, expected):
     """Selecting by the trace identifier must return the lines of every expected service."""
+    if not require_trace_id(trace_id):
+        return 1
     query = '{job="verify-observability-e2e", run_id="%s"} | json | traceId="%s"' % (run_id, trace_id)
     url = f'{loki_base}/loki/api/v1/query_range?' + urllib.parse.urlencode({
         'query': query, 'limit': '500', 'since': '10m'})

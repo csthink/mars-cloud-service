@@ -10,12 +10,13 @@
 set -uo pipefail
 
 SERVICE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/security-test-runtime.sh
 . "$SERVICE_DIR/scripts/security-test-runtime.sh"
 
 ENV_FILE="${E2E_ENV_FILE:-$SERVICE_DIR/mars-cloud-sample-service/.env}"
 [ -f "$ENV_FILE" ] || { echo "找不到环境文件 $ENV_FILE" >&2; exit 2; }
 set -a
-# shellcheck disable=SC1091
+# shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a
 
@@ -59,7 +60,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 - "$GATEWAY_PORT" "$UPMS_PORT" "$SAMPLE_PORT" "$MONITOR_PORT" \
+if ! python3 - "$GATEWAY_PORT" "$UPMS_PORT" "$SAMPLE_PORT" "$MONITOR_PORT" \
   "$GATEWAY_MANAGEMENT_PORT" "$UPMS_MANAGEMENT_PORT" "$SAMPLE_MANAGEMENT_PORT" "$MONITOR_MANAGEMENT_PORT" <<'PY'
 import socket, sys
 for value in sys.argv[1:]:
@@ -67,18 +68,40 @@ for value in sys.argv[1:]:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(("127.0.0.1", int(value)))
 PY
-[ "$?" -eq 0 ] || { echo "验收端口已被占用" >&2; exit 2; }
+then
+  echo "验收端口已被占用" >&2
+  exit 2
+fi
 
 echo "① 启动群机器人接收器与测试签发器"
-WEBHOOK_DIR="$(mktemp -d)"
+# 接收器目录放在日志目录下：收到的通知与各进程日志一起留作证据，也不在别处留下临时目录。
+WEBHOOK_DIR="$LOG_DIR/webhook"
+mkdir -p "$WEBHOOK_DIR"
 python3 - "$WEBHOOK_DIR" <<'PY' > "$LOG_DIR/webhook.log" 2>&1 &
-import http.server, pathlib, sys, threading
+import http.server, pathlib, sys
 directory = pathlib.Path(sys.argv[1])
 class Handler(http.server.BaseHTTPRequestHandler):
+    def read_body(self):
+        # 面板用 RestTemplate 发通知，请求体按分块传输编码发送，没有 Content-Length。
+        # 只按 Content-Length 读会得到空请求体，所以两种编码都要处理。
+        if self.headers.get('Transfer-Encoding', '').lower() != 'chunked':
+            return self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        body = b''
+        while True:
+            size = int(self.rfile.readline().split(b';')[0].strip(), 16)
+            if size == 0:
+                while self.rfile.readline().strip():
+                    pass
+                return body
+            body += self.rfile.read(size)
+            self.rfile.readline()
     def do_POST(self):
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length)
-        (directory / 'received').write_bytes(body)
+        body = self.read_body()
+        encoding = self.headers.get('Transfer-Encoding') or 'Content-Length'
+        print(f'POST {self.path} {encoding} {len(body)} bytes', flush=True)
+        # 每条通知一行，面板可能先后发出多条，后一条不能覆盖前一条。
+        with (directory / 'received').open('ab') as received:
+            received.write(body.replace(b'\n', b' ') + b'\n')
         self.send_response(200)
         self.end_headers()
     def log_message(self, *args):
@@ -169,52 +192,78 @@ TRACE_ID="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace-id \
   "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log")"
 if [ -z "$TRACE_ID" ]; then bad "三个日志里找不到共同的链路标识"; else ok "共同链路标识 ${TRACE_ID:0:8}…"; fi
 
-python3 "$SERVICE_DIR/scripts/observability-e2e.py" log-fields "$TRACE_ID" \
-  "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log" && ok "三份日志各有带该标识的结构化行且 span 标识互不相同" \
-  || bad "结构化日志字段不满足要求"
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" log-fields "$TRACE_ID" \
+  "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log"; then
+  ok "三份日志各有带该标识的结构化行且 span 标识互不相同"
+else
+  bad "结构化日志字段不满足要求"
+fi
 
 echo
 echo "⑥ 追踪后端里是一条链，三个进程各有 span"
 sleep 6
-python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace "$JAEGER_QUERY" "$TRACE_ID" \
-  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service \
-  && ok "追踪后端返回同一条链且三个进程都有 span" || bad "追踪后端的链路不完整"
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace "$JAEGER_QUERY" "$TRACE_ID" \
+  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service; then
+  ok "追踪后端返回同一条链且三个进程都有 span"
+else
+  bad "追踪后端的链路不完整"
+fi
 
 echo
 echo "⑦ 日志推送到日志后端后按链路标识能查回三个服务"
-python3 "$SERVICE_DIR/scripts/observability-e2e.py" push-logs "$LOKI" "$RUN_ID" \
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" push-logs "$LOKI" "$RUN_ID" \
   "mars-cloud-gateway:$LOG_DIR/gateway.log" \
   "mars-cloud-sample-service:$LOG_DIR/sample.log" \
-  "mars-cloud-upms-service:$LOG_DIR/upms.log" \
-  && ok "三份日志已推送" || bad "日志推送失败"
+  "mars-cloud-upms-service:$LOG_DIR/upms.log"; then
+  ok "三份日志已推送"
+else
+  bad "日志推送失败"
+fi
 sleep 3
-python3 "$SERVICE_DIR/scripts/observability-e2e.py" query-logs "$LOKI" "$RUN_ID" "$TRACE_ID" \
-  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service \
-  && ok "按链路标识查回三个服务的日志" || bad "日志后端按链路标识查不回三个服务"
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" query-logs "$LOKI" "$RUN_ID" "$TRACE_ID" \
+  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service; then
+  ok "按链路标识查回三个服务的日志"
+else
+  bad "日志后端按链路标识查不回三个服务"
+fi
 
 echo
 echo "⑧ 监控面板发现全部实例"
 MONITOR="http://127.0.0.1:$MONITOR_PORT"
-python3 "$SERVICE_DIR/scripts/observability-e2e.py" applications "$MONITOR" \
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" applications "$MONITOR" \
   "$MONITOR_USERNAME" "$MONITOR_PASSWORD" \
-  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service mars-cloud-monitor \
-  && ok "四个应用都在面板里且状态为 UP" || bad "面板没有发现全部实例"
+  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service mars-cloud-monitor; then
+  ok "四个应用都在面板里且状态为 UP"
+else
+  bad "面板没有发现全部实例"
+fi
 
 echo
 echo "⑨ 实例下线时面板发出通知"
 kill "$SAMPLE_PID" 2>/dev/null
 wait "$SAMPLE_PID" 2>/dev/null
 SAMPLE_PID=""
-notified=0
+# 只认示例服务自己的状态行。面板启动时会为它自己记一行 OFFLINE，
+# 分别匹配服务名与状态词会被那一行满足，检查就不再等示例服务真正下线。
+status_changed=0
 for _ in $(seq 1 60); do
-  if grep -q 'mars-cloud-sample-service' "$LOG_DIR/monitor.log" && grep -qE 'OFFLINE|DOWN' "$LOG_DIR/monitor.log"; then
+  if grep -qE 'Instance mars-cloud-sample-service \([0-9a-f]+\) is (OFFLINE|DOWN|OUT_OF_SERVICE)' "$LOG_DIR/monitor.log"; then
+    status_changed=1
+    break
+  fi
+  sleep 1
+done
+check "面板日志出现示例服务的状态变化" "1" "$status_changed"
+# 通知在状态变化之后异步发出，要等它送达，并确认说的是示例服务。
+notified=0
+for _ in $(seq 1 30); do
+  if grep -q 'mars-cloud-sample-service' "$WEBHOOK_DIR/received" 2>/dev/null; then
     notified=1
     break
   fi
   sleep 1
 done
-check "面板日志出现实例状态变化" "1" "$notified"
-[ -s "$WEBHOOK_DIR/received" ] && ok "群机器人接收器收到一次通知" || bad "群机器人接收器没有收到通知"
+check "群机器人接收器收到示例服务状态变化的通知" "1" "$notified"
 
 echo
 echo "──────────────────────────────"
