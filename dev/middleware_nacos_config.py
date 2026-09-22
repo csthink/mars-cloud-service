@@ -30,7 +30,7 @@ def normalize(value):
         for name, limit in (('group', 128), ('data_id', 255)):
             value = row[name]
             if not value or value != value.strip() or len(value) > limit or any(
-                    c not in '_-.:' and not (unicodedata.category(c).startswith('L') or unicodedata.category(c) == 'Nd')
+                    ord(c) > 0xFFFF or (c not in '_-.:' and not (unicodedata.category(c).startswith('L') or unicodedata.category(c) == 'Nd'))
                     for c in value):
                 raise Failure('Invalid Nacos configuration identifier')
         if row['type'] not in {'properties', 'xml', 'json', 'text', 'html', 'yaml', 'toml', 'unset'} or not row['content'].strip() or len(row['content'].encode()) > 1024 * 1024:

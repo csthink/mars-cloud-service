@@ -120,7 +120,7 @@ class ConfigurationState(unittest.TestCase):
             original = (self.e.state / 'binding.json').read_bytes()
             self.args.nacos_config_file = str(self.source)
             for field, value in [('group', '   '), ('data_id', '\t'), ('content', '\n'), ('type', 'bogus'),
-                                 ('group', 'x'*129), ('data_id', 'bad/name'), ('group', 'a b'), ('data_id', 'a²')]:
+                                 ('group', 'x'*129), ('data_id', 'bad/name'), ('group', 'a b'), ('data_id', 'a²'), ('data_id', '\U00010400.yaml')]:
                 selected = document(); selected['configurations'][0][field] = value
                 self.write(selected)
                 with self.subTest(field=field), self.assertRaises(m.Failure): self.e.load()
