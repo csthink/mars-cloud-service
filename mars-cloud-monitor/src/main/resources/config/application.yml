@@ -46,15 +46,11 @@ spring:
         password: ${NACOS_PASSWORD:}
   boot:
     admin:
-      # 被监控实例的管理端点需要 Basic 认证，面板用与服务同一组凭据去读。
+      # 被监控实例的管理端点需要认证，面板用与服务一致的凭据去读。
+      # 不给默认值：读不到实例的管理端点时面板只能显示「离线」，那是比启动失败更难查的故障。
       instance-auth:
-        default-user-name: ${MARS_MANAGEMENT_USERNAME:}
-        default-password: ${MARS_MANAGEMENT_PASSWORD:}
-      notify:
-        dingtalk:
-          # 留空即不装配群机器人通知，只保留日志通知。
-          webhook-url: ${MONITOR_DINGTALK_WEBHOOK_URL:}
-          secret: ${MONITOR_DINGTALK_SECRET:}
+        default-user-name: ${MARS_MANAGEMENT_USERNAME}
+        default-password: ${MARS_MANAGEMENT_PASSWORD}
 
 ---
 # 测试用文本格式的控制台日志，理由与其他部署物相同。
