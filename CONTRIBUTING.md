@@ -24,7 +24,8 @@
 | `mars-cloud-auth-service` | 8101 | `64000–64999` | 规划中 |
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | ✅ |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | ✅ |
-| 业务服务 | 8104+ | `66000–99999` 内自选 | 按需新建 |
+| 业务服务 | 8104–8179 | `66000–99999` 内自选 | 按需新建 |
+| `mars-cloud-monitor` | 8190 | 无 | 规划中 |
 
 业务服务共用框架分配表里的 `business` 区段，各自声明一段、互不重叠。
 实际占用的子区间登记在 [docs/services.md](docs/services.md)——**新建服务时挑一段空白的**，

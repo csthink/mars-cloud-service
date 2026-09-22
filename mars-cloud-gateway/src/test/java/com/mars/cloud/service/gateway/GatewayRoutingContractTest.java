@@ -32,12 +32,22 @@ class GatewayRoutingContractTest {
         List<Route> routes = routeLocator.getRoutes().collectList().block();
 
         assertThat(routes).isNotNull();
-        // 路由总数一起断言：新增路由必须先让这条用例失败，再由改动者确认它确实该被暴露。
+        // 路由 id 按顺序全等：新增、删除或调换顺序都必须先让这条用例失败，再由改动者确认。
+        // 顺序也是契约的一部分：网关按声明顺序匹配，重排会改变路径重叠时的命中结果。
         assertThat(routes).extracting(Route::getId).containsExactly("upms", "sample");
         assertThat(route(routes, "upms").getUri()).isEqualTo(URI.create("lb://mars-cloud-upms-service"));
         assertThat(route(routes, "sample").getUri()).isEqualTo(URI.create("lb://mars-cloud-sample-service"));
-        assertThat(route(routes, "upms").getPredicate().toString()).contains("/upms/**");
-        assertThat(route(routes, "sample").getPredicate().toString()).contains("/sample/**");
+        // 断言判定的完整描述而不是子串：给某条路由偷偷再加一个判定（Header、Method 等）也会让这里失败。
+        // 描述里带一个路由定位器包装的 lambda，它的名字含每次运行都不同的地址，先归一化再比较。
+        assertThat(predicateOf(routes, "upms"))
+                .isEqualTo("(<locator> && Paths: [/upms/**], match trailing slash: true)");
+        assertThat(predicateOf(routes, "sample"))
+                .isEqualTo("(<locator> && Paths: [/sample/**], match trailing slash: true)");
+    }
+
+    private static String predicateOf(List<Route> routes, String id) {
+        return route(routes, id).getPredicate().toString()
+                .replaceAll("RouteDefinitionRouteLocator\\$\\$Lambda/0x[0-9a-f]+", "<locator>");
     }
 
     private static Route route(List<Route> routes, String id) {

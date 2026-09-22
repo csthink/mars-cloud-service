@@ -3,7 +3,7 @@
 系统外部请求的**统一入口**：把外部请求路由到各业务服务。响应式栈（Spring Cloud Gateway + WebFlux）。
 
 - 入口类：`com.mars.cloud.service.gateway.GatewayApplication`
-- 端口：`8100`；无 context path（路径原样转发给目标服务）
+- 端口：`8100`；管理端口 `9100`；无 context path（路径原样转发给目标服务）
 - 健康检查：`GET /actuator/health`
 - 错误码区间：`63000–63999`（框架权威分配表里的 `gateway` 区段）
 
@@ -14,6 +14,7 @@
 | 路径 | 目标 | 说明 |
 | --- | --- | --- |
 | `/upms/**` | `lb://mars-cloud-upms-service` | UPMS 自带 context path `/upms`，路径不改写 |
+| `/sample/**` | `lb://mars-cloud-sample-service` | 示例服务自带 context path `/sample`，路径不改写 |
 
 刻意**不开** `discovery.locator`：开了以后注册中心里的每个服务都会被自动暴露，
 网关就不再是「显式声明的唯一入口」。新增业务服务时在这里加一条路由。

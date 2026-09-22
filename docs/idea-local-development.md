@@ -197,7 +197,7 @@ IDEA 2026.2 可直接加载 `.env`；菜单入口见 [JetBrains 环境变量与 
 | UPMS | `http://127.0.0.1:8102/upms/actuator/health` | HTTP 200，`status` 为 `UP` |
 | gateway 转发到 UPMS | `http://127.0.0.1:8100/upms/actuator/health` | HTTP 200，`status` 为 `UP` |
 
-UPMS 刚启动时，服务发现可能需要片刻；尚未发现实例时 gateway 返回 `503`。当前 gateway 只声明了 `/upms/**` 路由，sample 使用 `8103` 直接访问。
+UPMS 刚启动时，服务发现可能需要片刻；尚未发现实例时 gateway 返回 `503`。当前 gateway 声明了 `/upms/**` 与 `/sample/**` 两条路由，两个服务也都可以按各自端口直接访问。
 
 ### 带令牌的业务请求
 

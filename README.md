@@ -64,7 +64,8 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 | `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：令牌签发、登录渠道、短信验证码、账号 | 规划中 |
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | 框架使用示例：一条命令跑起来的完整接线示范 | ✅ 已落地 |
-| `mars-cloud-<biz>-service` | 8104+ | `66000–99999` 内自选 | 业务服务，共用 `business` 区段、各自声明一段 | 规划中 |
+| `mars-cloud-<biz>-service` | 8104–8179 | `66000–99999` 内自选 | 业务服务，共用 `business` 区段、各自声明一段 | 规划中 |
+| `mars-cloud-monitor` | 8190 | 无 | 运行中实例的监控面板，只绑内网地址、不经网关 | 规划中 |
 
 各服务逐个加入根聚合 POM 的 `<modules>`，已占用的错误码子区间登记在
 [docs/services.md](docs/services.md)。
