@@ -49,14 +49,6 @@ server:
     context-path: /upms
   port: 8102
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  metrics:
-    tags:
-      application: ${spring.application.name}
 
 ---
 spring:
@@ -79,3 +71,16 @@ spring:
         group: DEFAULT_GROUP
         username: ${NACOS_USERNAME:}
         password: ${NACOS_PASSWORD:}
+
+---
+# 测试用文本格式的控制台日志：构建校验器按「级别 类名 消息」的文本形态识别告警，
+# 结构化 JSON 行不匹配它的模式，测试里的告警会在构建报告里消失。
+# 真实运行仍是结构化 JSON，由可观测性组件的默认值给出。
+spring:
+  config:
+    activate:
+      on-profile: "test"
+mars:
+  observability:
+    logging:
+      console-format: plain

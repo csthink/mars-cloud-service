@@ -48,9 +48,19 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- 启用 Boot 的 Web 安全：管理端点的认证链按它提供的端点匹配器建立 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
+          可观测性：链路追踪与 OTLP 导出、Prometheus 指标、结构化日志与调用链的关联、
+          管理端口约定与管理端点认证。Actuator 与指标注册表由它带入，本模块不单独声明。
+        -->
+        <dependency>
+            <groupId>com.mars.cloud</groupId>
+            <artifactId>mars-cloud-observability-spring-boot-starter</artifactId>
         </dependency>
 
         <dependency>
