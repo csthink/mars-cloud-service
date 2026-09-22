@@ -115,6 +115,7 @@ class Environment:
             raise Failure("Broker advertised address must be IPv4")
         self.owner = None
         self.credentials = None
+        self.nacos_configurations = []
 
     @contextmanager
     def locked(self):
@@ -159,6 +160,8 @@ class Environment:
         else:
             raise Failure('No initialized state directory')
         self.check_ownership()
+        from middleware_nacos_config import load_plan
+        self.nacos_configurations = load_plan(self)
 
     def run(self, command, *, data=None, check=True, phase='command', env=None, timeout=180):
         try:
@@ -389,9 +392,11 @@ class Environment:
         n = self.args.slot
         if n not in self.args.slots:
             raise Failure('Environment number was not initialized')
+        from middleware_init import Nacos, client_name
+        Nacos(self).login(client=True)
         values = dict(NACOS_SERVER_ADDR=f'{self.args.bind}:{self.ports["nacos_http"]}',
                       NACOS_NAMESPACE_ID=self.args.base_namespace if n == 0 else self.args.namespace_prefix + str(n),
-                      NACOS_USERNAME='nacos', NACOS_PASSWORD=self.credentials['nacos'],
+                      NACOS_USERNAME=client_name(self), NACOS_PASSWORD=self.credentials['nacos_client'],
                       SPRING_DATA_REDIS_HOST=self.args.bind, SPRING_DATA_REDIS_PORT=str(self.ports['redis']),
                       SPRING_DATA_REDIS_PASSWORD=self.credentials['redis'], SPRING_DATA_REDIS_DATABASE=str(n),
                       MARS_DB_SUFFIX='' if n == 0 else '_s' + str(n), MARS_MQ_PREFIX='' if n == 0 else 's' + str(n) + '-',
@@ -413,6 +418,7 @@ def parser():
     p.add_argument('--base-namespace', default=os.environ.get('NACOS_BASE_NAMESPACE_ID', 'mars-local'))
     p.add_argument('--namespace-prefix', default=os.environ.get('NACOS_NAMESPACE_PREFIX', 'mars-slot-'))
     p.add_argument('--slots', type=lambda s: [int(n) for n in s.split(',')], default=list(range(7)))
+    p.add_argument('--nacos-config-file', help='Private JSON with explicitly selected initialization content')
     p.add_argument('--state-dir')
     p.add_argument('--compose-file')
     p.add_argument('--project-directory')

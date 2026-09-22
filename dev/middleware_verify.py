@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from middleware import Failure, SERVICES, protected_write
-from middleware_init import HttpFailure, Nacos, request
+from middleware_init import HttpFailure, Nacos, request, verify_selected_configurations, verify_nacos_client
 
 
 def retry(action, timeout=90):
@@ -60,6 +60,8 @@ def verify_limits(e, rows):
 def verify_nacos(e, marker):
     api = Nacos(e)
     api.login()
+    verify_selected_configurations(e, api)
+    verify_nacos_client(e)
     for n in e.args.slots:
         namespace = e.args.base_namespace if not n else e.args.namespace_prefix + str(n)
         params = dict(namespaceId=namespace, groupName='LOCAL_VERIFY', dataId=marker['id'] + '.yaml')

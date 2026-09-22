@@ -91,10 +91,12 @@ class State(unittest.TestCase):
             with e.locked():
                 pass
 
-    def test_export_never_overwrites_existing_environment(self):
+    @patch.object(init.Nacos, 'login')
+    def test_export_never_overwrites_existing_environment(self, login):
         e = self.environment
         with e.locked():
             e.load(create=True)
+            e.credentials['nacos_client'] = 'application-only-password'
             e.export_env()
             output = e.state / 'environment-0.env'
             old = output.read_bytes()
@@ -135,6 +137,7 @@ class Initialization(unittest.TestCase):
         e = Mock()
         e.args.slots = [0]
         e.args.base_namespace = 'base'
+        e.nacos_configurations = []
         api = Mock()
         api.call.side_effect = [[{'namespace': 'base'}], {'content': 'user-content', 'type': 'yaml'}]
         api.items.return_value = [{'groupName': 'COMMON', 'dataId': 'shared-common.yaml'}]
