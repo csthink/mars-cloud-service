@@ -1,5 +1,6 @@
 package com.mars.cloud.service.monitor;
 
+import de.codecentric.boot.admin.server.cloud.discovery.InstanceDiscoveryListener;
 import de.codecentric.boot.admin.server.notify.DingTalkNotifier;
 import de.codecentric.boot.admin.server.notify.LoggingNotifier;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,16 @@ class MonitorContractTest {
         assertThat(context.getBeansOfType(LoggingNotifier.class).values())
                 .singleElement()
                 .isInstanceOf(DeregistrationAwareLoggingNotifier.class);
+    }
+
+    /**
+     * 实例发现只有一个监听器，是停机时会先停下的那个；Spring Boot Admin 自带的同类监听器不再装配，
+     * 否则它在停机等待期间照常发现，Nacos 客户端被重新创建。
+     */
+    @Test void exactlyOneShutdownAwareDiscoveryListenerIsPresent() {
+        assertThat(context.getBeansOfType(InstanceDiscoveryListener.class).values())
+                .singleElement()
+                .isInstanceOf(ShutdownAwareInstanceDiscoveryListener.class);
     }
 
     /** 钉钉通知暂不支持，默认不装配；配置了地址时启动失败，见 {@link MonitorStartupFailureTest}。 */

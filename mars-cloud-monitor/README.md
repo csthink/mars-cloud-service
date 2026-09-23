@@ -30,6 +30,10 @@ curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http
 面板经 `spring-boot-admin-server-cloud` 从 Nacos 读取实例，按实例元数据里的 `management.port` 找到 Actuator 端点。
 这个元数据由各服务引入的 observability starter 在注册时写入；缺少它时面板会去业务端口找 Actuator 端点，而业务端口上没有。
 
+面板停机时先停止实例发现，再由 Nacos 注销面板并关闭客户端。Nacos 注销后还要等
+`spring.cloud.nacos.discovery.graceful-shutdown-wait-time`（默认 10 秒）才真正停机；若这段时间里照常发现，
+Nacos 客户端会被重新创建，面板也会把自己当作被移除的实例。
+
 ## 通知
 
 面板用 Spring Boot Admin 的日志通知，每条通知写成一行 INFO。两种情况都会写：
