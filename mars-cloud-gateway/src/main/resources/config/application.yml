@@ -48,7 +48,6 @@ logging:
     # 固定为 INFO：排查时把网关的包整体调到 DEBUG，访问令牌也不会进日志。
     org.springframework.cloud.gateway.filter.headers.observation: INFO
 
-
 ---
 spring:
   config:

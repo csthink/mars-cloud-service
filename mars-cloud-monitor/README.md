@@ -30,6 +30,10 @@ curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http
 `X-XSRF-TOKEN` 请求头或 `_csrf` 表单字段，浏览器里使用不需要额外操作。登录后只跳回本站地址。面板不接受实例经 `POST /instances` 自行登记，
 实例只经 Nacos 发现。
 
+面板放在终止 TLS 的反向代理后面时，要设 `server.forward-headers-strategy=framework`（或 `native`），并让代理转发
+`X-Forwarded-Proto` 与 `X-Forwarded-Host`：面板按这两项判断请求的协议与主机，否则登录后要跳回的 https 地址会被当作别的站点，
+退回面板首页。
+
 ## 实例发现
 
 面板经 `spring-boot-admin-server-cloud` 从 Nacos 读取实例，按实例元数据里的 `management.port` 找到 Actuator 端点。

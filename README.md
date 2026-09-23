@@ -76,7 +76,7 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 各服务逐个加入根聚合 POM 的 `<modules>`，已占用的错误码子区间登记在
 [docs/services.md](docs/services.md)。
 
-每个服务的管理端点（Actuator）在「业务端口加 1000」的管理端口上：`health` 匿名可读，其余端点要 Basic 认证。
+每个服务的管理端点（Actuator）在「业务端口加 1000」的管理端口上：`health` 匿名可读，其余端点要 Basic 认证；网关没有接入 Spring Security，只暴露 `health` 与 `info`。
 链路追踪、结构化日志与管理端点的约定由框架仓的 observability starter 统一给出。
 
 **想先看看怎么写一个服务**：`mars-cloud-sample-service` 是最小可运行示例，

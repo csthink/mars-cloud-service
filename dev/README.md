@@ -26,7 +26,7 @@ python3 dev/middleware.py down --project mars-lab-check --offset 30000
 
 状态与随机凭据在 ignored `dev/.local/<项目名>/`，目录权限 0700，凭据文件权限 0600。可通过 `--state-dir` 指定另外的私有目录；备份时同时保存状态目录与对应数据卷。管理员用户名分别为 Nacos 的 `nacos`、Grafana 与 xxl-job 的 `admin`，密码在受保护的 `credentials.json` 对应字段中。不要提交、粘贴或公开这些文件。连接变量由 `export-env` 写入新文件，拒绝覆盖已有文件；`--output` 可另选输出路径。
 
-默认建立一个基准 Namespace 和编号 1 到 6 的环境，编号由 `--slots` 明确选择，名称由 `--base-namespace` 与 `--namespace-prefix` 指定。每个 Namespace 初始化共享配置及 gateway、UPMS、sample 应用配置。已有内容不一致时入口停止，需确认配置来源再处理。MySQL 为 auth、upms、product、order、notice 各建独立数据库与账号，编号环境使用 `_sN` 后缀；这不代表相应应用或业务表已经实现。Redis 数据库号隔离数据，不构成账号权限边界。
+默认建立一个基准 Namespace 和编号 1 到 6 的环境，编号由 `--slots` 明确选择，名称由 `--base-namespace` 与 `--namespace-prefix` 指定。每个 Namespace 初始化共享配置及 gateway、UPMS、sample、monitor 应用配置。已有内容不一致时入口停止，需确认配置来源再处理。MySQL 为 auth、upms、product、order、notice 各建独立数据库与账号，编号环境使用 `_sN` 后缀；这不代表相应应用或业务表已经实现。Redis 数据库号隔离数据，不构成账号权限边界。
 
 迁移已有 Nacos 配置时，先停用其他配置写入并备份、逐项确认需要保留的内容。把确认结果写入仅当前用户可读写的 JSON 文件，再运行 `python3 dev/middleware.py up --nacos-config-file <文件>`。示例格式如下，内容字符串保留原有空白与换行：
 

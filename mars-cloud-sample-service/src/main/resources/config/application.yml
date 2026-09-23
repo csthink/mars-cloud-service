@@ -48,7 +48,6 @@ server:
   servlet:
     context-path: /sample
 
-
 ---
 spring:
   config:
