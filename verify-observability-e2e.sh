@@ -2,10 +2,11 @@
 #
 # 可观测性的真进程验收：一次经网关到示例服务再到授权决策服务的请求，
 # 在追踪后端是一条链、三个进程各有 span，三个进程的日志带同一个链路标识，
-# 日志按该标识能查回三个服务，监控面板能看到全部实例并在实例下线时写出日志通知。
+# 日志按该标识能查回三个服务，Grafana 能从日志行打开这条链，
+# 监控面板能看到全部实例并在实例下线时写出日志通知。
 #
 # 前置：本机中间件已启动（追踪后端、日志后端、注册中心）；四个模块已 clean package；
-# 环境文件给出注册中心连接、端口与管理端点凭据。
+# 环境文件给出注册中心连接、端口与管理端点凭据；本机有 docker（临时 Grafana 用）。
 #
 set -uo pipefail
 
@@ -57,6 +58,7 @@ cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null
   done
   stop_security_test_issuer
+  [ -n "${GRAFANA_CONTAINER:-}" ] && docker rm -f "$GRAFANA_CONTAINER" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -73,9 +75,23 @@ then
   exit 2
 fi
 
-echo "① 启动测试签发器"
+echo "① 启动测试签发器与临时 Grafana"
 start_security_test_issuer "$SERVICE_DIR" || exit 1
 ok "测试签发器就绪"
+# 临时 Grafana 只用来核对本工作树的候选数据源配置：与本机第一套同一镜像摘要，
+# 匿名管理员，只绑回环地址的随机端口，不接入中间件的网络，验收结束即删除。
+# 第一套 Grafana 只在启动时读取数据源配置，不受影响。
+GRAFANA_IMAGE="grafana/grafana@$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["images"]["grafana"]["digest"])' \
+  "$SERVICE_DIR/dev/images.lock.json")"
+GRAFANA_CONTAINER="observability-e2e-grafana-$RUN_ID"
+if ! docker run -d --rm --name "$GRAFANA_CONTAINER" -p 127.0.0.1::3000 \
+    -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin -e GF_AUTH_DISABLE_LOGIN_FORM=true \
+    -v "$SERVICE_DIR/dev/config/datasources.yaml:/etc/grafana/provisioning/datasources/local.yaml:ro" \
+    "$GRAFANA_IMAGE" >/dev/null; then
+  echo "临时 Grafana 启动失败" >&2
+  exit 1
+fi
+ok "临时 Grafana 已启动"
 
 wait_health() {
   local port="$1" limit="${2:-90}" waited=0
@@ -167,7 +183,7 @@ else
 fi
 
 echo
-echo "⑦ 日志推送到日志后端后按链路标识能查回三个服务"
+echo "⑦ 日志推送到日志后端后按链路标识能查回三个服务，Grafana 能从日志行打开这条链"
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" push-logs "$LOKI" "$RUN_ID" \
   "mars-cloud-gateway:$LOG_DIR/gateway.log" \
   "mars-cloud-sample-service:$LOG_DIR/sample.log" \
@@ -182,6 +198,14 @@ if python3 "$SERVICE_DIR/scripts/observability-e2e.py" query-logs "$LOKI" "$RUN_
   ok "按链路标识查回三个服务的日志"
 else
   bad "日志后端按链路标识查不回三个服务"
+fi
+GRAFANA="http://127.0.0.1:$(docker port "$GRAFANA_CONTAINER" 3000/tcp | head -1 | sed 's/.*://')"
+for _ in $(seq 1 60); do command curl -fs "$GRAFANA/api/health" >/dev/null 2>&1 && break; sleep 1; done
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace-link "$GRAFANA" "$TRACE_ID" \
+  "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log"; then
+  ok "Grafana 的关联字段能从三份日志取出本次链路标识并链到 Jaeger"
+else
+  bad "Grafana 的关联字段不能从日志链到这条调用链"
 fi
 
 echo

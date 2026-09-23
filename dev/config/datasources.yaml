@@ -6,6 +6,19 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
+    jsonData:
+      # 日志行的 traceId 字段显示为链接，点击后在 Jaeger 数据源里打开同一条调用链。
+      # 字段名是部署物结构化日志里的 traceId，不是 ECS 习惯的 trace.id。
+      # 按正则匹配日志原文，而不是按标签匹配：标签匹配只在查询写了 | json 时才有 traceId 标签，
+      # 平时按服务名浏览或按文本搜索日志时链接不出现。冒号两侧允许空白，不依赖某一种 JSON 写法。
+      # $$ 是 Grafana 配置文件对 $ 的转义：它会把 ${...} 当环境变量替换，
+      # 写成单个 $ 时这里读进去是空串，链接存在却打不开任何调用链。
+      derivedFields:
+        - name: traceId
+          matcherType: regex
+          matcherRegex: '"traceId"\s*:\s*"([0-9a-f]{32})"'
+          datasourceUid: jaeger
+          url: "$${__value.raw}"
   - name: Jaeger
     uid: jaeger
     type: jaeger

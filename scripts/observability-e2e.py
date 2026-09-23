@@ -2,25 +2,30 @@
 import base64
 import json
 import pathlib
+import re
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-MARKER = 'probe'
 
-
-def structured_lines(path):
-    """Yield the parsed structured log lines of one process, skipping plain output."""
+def structured_records(path):
+    """Yield (raw text, parsed object) for each structured log line of one process, skipping plain output."""
     for raw in pathlib.Path(path).read_text(errors='replace').splitlines():
         raw = raw.strip()
         if not raw.startswith('{'):
             continue
         try:
-            yield json.loads(raw)
+            yield raw, json.loads(raw)
         except ValueError:
             continue
+
+
+def structured_lines(path):
+    """Yield the parsed structured log lines of one process."""
+    for _, line in structured_records(path):
+        yield line
 
 
 def trace_ids(path):
@@ -103,14 +108,18 @@ def command_trace(query_base, trace_id, expected):
 
 
 def command_push_logs(loki_base, run_id, specs):
-    """Push the structured lines of each process with labels the query step can select on."""
+    """Push the structured lines of each process with labels the query step can select on.
+
+    Lines are pushed exactly as the process wrote them, the way a log collector forwards stdout:
+    re-serialising them would change the text that the Grafana log-to-trace field is matched against.
+    """
     streams = []
     for spec in specs:
         service, path = spec.split(':', 1)
         values = []
         base = time.time_ns()
-        for offset, line in enumerate(structured_lines(path)):
-            values.append([str(base + offset), json.dumps(line, ensure_ascii=False)])
+        for offset, (raw, _) in enumerate(structured_records(path)):
+            values.append([str(base + offset), raw])
         if not values:
             print(f'{path} 没有结构化行可推送', file=sys.stderr)
             return 1
@@ -148,6 +157,45 @@ def command_query_logs(loki_base, run_id, trace_id, expected):
     return 1
 
 
+def command_trace_link(grafana_base, trace_id, paths):
+    """Grafana must turn the trace identifier in every process's log lines into a link to that trace.
+
+    Grafana applies the field in the browser, so the check covers its three parts instead: the Loki
+    data source has one field pointing at the Jaeger data source; the link value is the matched text
+    itself, not emptied by the provisioning file's variable expansion; and the pattern extracts this
+    run's trace identifier from the lines each process actually wrote.
+    """
+    if not require_trace_id(trace_id):
+        return 1
+    try:
+        _, loki = fetch(f'{grafana_base}/api/datasources/uid/loki')
+        _, jaeger = fetch(f'{grafana_base}/api/datasources/uid/jaeger')
+    except urllib.error.URLError as error:
+        print(f'读取 Grafana 数据源失败：{error}', file=sys.stderr)
+        return 1
+    jaeger_uid = json.loads(jaeger)['uid']
+    fields = [field for field in json.loads(loki).get('jsonData', {}).get('derivedFields', [])
+              if field.get('datasourceUid') == jaeger_uid]
+    if len(fields) != 1:
+        print(f'Loki 数据源指向 Jaeger 的关联字段应有一个，实际 {len(fields)} 个', file=sys.stderr)
+        return 1
+    field = fields[0]
+    if field.get('url') != '${__value.raw}':
+        print(f'关联字段的链接值应为 ${{__value.raw}}，实际是 {field.get("url")!r}', file=sys.stderr)
+        return 1
+    if field.get('matcherType', 'regex') != 'regex':
+        print('关联字段应按正则匹配日志原文：按标签匹配时，查询不写 | json 就没有链接', file=sys.stderr)
+        return 1
+    pattern = re.compile(field['matcherRegex'])
+    for path in paths:
+        extracted = {match.group(1) for raw, _ in structured_records(path)
+                     for match in [pattern.search(raw)] if match}
+        if trace_id not in extracted:
+            print(f'{path} 里没有一行能被关联字段取出本次的链路标识', file=sys.stderr)
+            return 1
+    return 0
+
+
 def command_applications(monitor_base, user, password, expected):
     """The monitor must list every expected application with an UP status."""
     token = base64.b64encode(f'{user}:{password}'.encode()).decode()
@@ -175,6 +223,7 @@ COMMANDS = {
     'trace': lambda args: command_trace(args[0], args[1], args[2:]),
     'push-logs': lambda args: command_push_logs(args[0], args[1], args[2:]),
     'query-logs': lambda args: command_query_logs(args[0], args[1], args[2], args[3:]),
+    'trace-link': lambda args: command_trace_link(args[0], args[1], args[2:]),
     'applications': lambda args: command_applications(args[0], args[1], args[2], args[3:]),
 }
 
