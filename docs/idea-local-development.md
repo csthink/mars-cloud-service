@@ -116,6 +116,13 @@ done
 
 三个模块均保持 `SPRING_PROFILES_ACTIVE=local`；UPMS 保持 `UPMS_LOCAL_FIXTURE_ENABLED=true`，用于加载演示权限数据。`SERVER_PORT` 保持注释，由各应用使用自己的默认端口。sample 不使用数据库或 Redis，UPMS 的 `local` 配置关闭了这两者的连接与健康检查。
 
+管理端点与调用链的变量按需填写，三个模块取值相同：
+
+- `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD`：管理端点的 Basic 认证账号。`local` profile 下可以留空，
+  这时管理端点只暴露 `health` 与 `info`，启动日志有一条告警；需要查看指标、日志级别等端点时填写。
+- `OTLP_TRACING_ENDPOINT`：调用链导出地址。使用项目中间件入口的默认编排时填 `http://127.0.0.1:24318/v1/traces`；
+  留空则不导出，应用照常启动。
+
 `.env` 已被 Git 忽略。账号密码只放本机文件或运行环境，不写进 `application-local.yml`、共享 IDEA 配置或版本库。
 
 ## 5. 启动本地测试签发器
@@ -192,12 +199,14 @@ IDEA 2026.2 可直接加载 `.env`；菜单入口见 [JetBrains 环境变量与 
 
 | 检查 | URL | 预期 |
 | --- | --- | --- |
-| gateway | `http://127.0.0.1:8100/actuator/health` | HTTP 200，`status` 为 `UP` |
-| sample | `http://127.0.0.1:8103/sample/actuator/health` | HTTP 200，`status` 为 `UP` |
-| UPMS | `http://127.0.0.1:8102/upms/actuator/health` | HTTP 200，`status` 为 `UP` |
-| gateway 转发到 UPMS | `http://127.0.0.1:8100/upms/actuator/health` | HTTP 200，`status` 为 `UP` |
+| gateway | `http://127.0.0.1:9100/actuator/health` | HTTP 200，`status` 为 `UP` |
+| sample | `http://127.0.0.1:9103/actuator/health` | HTTP 200，`status` 为 `UP` |
+| UPMS | `http://127.0.0.1:9102/actuator/health` | HTTP 200，`status` 为 `UP` |
 
-UPMS 刚启动时，服务发现可能需要片刻；尚未发现实例时 gateway 返回 `503`。当前 gateway 声明了 `/upms/**` 与 `/sample/**` 两条路由，两个服务也都可以按各自端口直接访问。
+健康检查在各服务的管理端口（业务端口加 1000）上，路径不带服务的 context path。业务端口上没有 `/actuator/*`。
+
+当前 gateway 声明了 `/upms/**` 与 `/sample/**` 两条路由，两个服务也都可以按各自端口直接访问。经 gateway 转发的检查
+放在下一小节，与带令牌的业务请求一起做。
 
 ### 带令牌的业务请求
 
@@ -210,6 +219,15 @@ curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
 ```
 
 预期 HTTP 200，响应含 `success:true` 和订单 `id:1`。不带令牌访问业务接口应得到 `401`，无需为本地调试关闭认证。
+
+经 gateway 访问同一接口，验证路由与服务发现：
+
+```bash
+curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
+  http://127.0.0.1:8100/sample/v1/orders/1
+```
+
+预期与直接访问相同。sample 刚启动时服务发现可能需要片刻，尚未发现实例时 gateway 返回 `503` 与错误码 `63002`。
 
 在同一终端继续验证 sample 经服务发现调用 UPMS：
 

@@ -35,13 +35,13 @@ cd ../mars-cloud-service && mvn -pl mars-cloud-sample-service -am package
 cd mars-cloud-sample-service && ./run-local.sh
 ```
 
-服务监听 `8103`，context path 是 `/sample`。业务请求使用合法 Bearer 令牌，audience 包含 `mars-cloud-sample-service`，调用 UPMS 时另含 `mars-cloud-upms-service`。下列示例的 `AUTH_HEADER_FILE` 指向权限 0600 的本地文件，内容为 `Authorization: Bearer <合法令牌>`；不要把令牌写入 `.env`、命令行参数或版本库。验证：
+服务监听 `8103`，context path 是 `/sample`；管理端点在管理端口 `9103` 上，不带 context path。业务请求使用合法 Bearer 令牌，audience 包含 `mars-cloud-sample-service`，调用 UPMS 时另含 `mars-cloud-upms-service`。下列示例的 `AUTH_HEADER_FILE` 指向权限 0600 的本地文件，内容为 `Authorization: Bearer <合法令牌>`；不要把令牌写入 `.env`、命令行参数或版本库。验证：
 
 ```bash
 B=http://127.0.0.1:8103/sample
 
-curl --header "@$AUTH_HEADER_FILE" -s $B/actuator/health
-# {"status":"UP"}
+curl -s http://127.0.0.1:9103/actuator/health     # 管理端口，匿名可读
+# {"groups":["liveness","readiness"],"status":"UP"}
 
 curl --header "@$AUTH_HEADER_FILE" -s $B/v1/orders/1
 # {"success":true,"result":{"id":"1","sku":"demo-sku","quantity":2}}
@@ -270,7 +270,7 @@ src/main/java/com/mars/cloud/service/sample/
 
 ## 依赖边界
 
-本模块依赖框架仓的 mvc、Nacos、security starter 与 security-feign 适配模块，分别提供响应处理、注册配置、身份验证和权限调用。Web 运行时由服务自己提供。
+本模块依赖框架仓的 mvc、Nacos、security starter、security-feign 适配模块与 observability starter，分别提供响应处理、注册配置、身份验证、权限调用，以及链路追踪、结构化日志与管理端点。Web 运行时由服务自己提供；`spring-boot-starter-security` 由本模块声明，管理端点的 Basic 认证链需要它。
 
 服务之间**不加编译期依赖**，只走 HTTP 调用。
 

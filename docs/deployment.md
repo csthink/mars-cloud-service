@@ -128,6 +128,9 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `MARS_SECURITY_JWK_SET_URI` | 可选的 JWKS 地址，仍校验 issuer；部署环境使用 HTTPS |
 | `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_PASSWORD` | 数据源 |
 | `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
+| `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 管理端点 Basic 认证的账号；同一环境内各服务相同，监控面板用它读取各实例 |
+| `OTLP_TRACING_ENDPOINT` | 调用链导出端点（OTLP over HTTP 的完整地址）；留空则不导出 |
+| `MONITOR_USERNAME` / `MONITOR_PASSWORD` | 监控面板的管理员账号，只有 `mars-cloud-monitor` 读取；任一为空即启动失败 |
 
 ## Profile 语义
 
@@ -143,13 +146,22 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 
 ## 健康检查与可观测性
 
-| 端点 | 用途 |
-| --- | --- |
-| `GET <context-path>/actuator/health` | 存活 / 就绪判定的聚合状态 |
-| `GET <context-path>/actuator/health/readiness` | 就绪探针 |
-| `GET <context-path>/actuator/health/liveness` | 存活探针 |
-| `GET <context-path>/actuator/info` | 应用信息 |
-| `GET <context-path>/actuator/prometheus` | 指标（Prometheus 格式，部分服务开放） |
+每个服务引入框架的 observability starter，管理端点（Actuator）不在业务端口上，而在**管理端口 = 业务端口 + 1000**
+上，路径不带服务的 context path：
+
+| 端点（管理端口） | 访问 | 用途 |
+| --- | --- | --- |
+| `GET /actuator/health` | 匿名 | 聚合状态；匿名只返回状态，带凭据返回组件明细 |
+| `GET /actuator/health/readiness` | 匿名 | 就绪探针 |
+| `GET /actuator/health/liveness` | 匿名 | 存活探针 |
+| `GET /actuator/info` | Basic 认证（收窄为 `health`、`info` 时匿名） | 应用信息 |
+| `GET /actuator/prometheus`、`/actuator/metrics` | Basic 认证 | 指标，带 `application` 标签 |
+| `/actuator/loggers`、`/actuator/threaddump`、`/actuator/heapdump` | Basic 认证 | 运行期排查 |
+
+认证账号来自 `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD`。缺凭据时，开发 profile 只暴露
+`health` 与 `info` 并告警，其他 profile 启动失败；服务没有接入 Spring Security 时（例如网关）只暴露 `health` 与 `info`。
+暴露清单与这些规则见框架仓 observability starter 的说明，需要进一步收窄时设 `mars.observability.management.exposure`。
+业务端口上没有 `/actuator/*`。
 
 UPMS 的 `/actuator/info` 只增加 `nacos.configRevision`，用于观察动态刷新是否生效；
 它不暴露 Namespace、服务地址、配置正文或凭据。
@@ -158,22 +170,19 @@ UPMS 的 `/actuator/info` 只增加 `nacos.configRevision`，用于观察动态�
 只排除连接是不够的。若 `/actuator/health/readiness` 是 `UP` 而聚合 `/actuator/health`
 是 `DOWN`，说明某个健康指示器仍在尝试连接外部组件。
 
-排查时先看是哪个组件：
+排查时带凭据查看组件明细，不需要重启：
 
 ```bash
-java --sun-misc-unsafe-memory-access=allow -jar mars-cloud-upms-service.jar \
-  --management.endpoint.health.show-details=always
+curl -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" http://127.0.0.1:9102/actuator/health
 ```
 
-**上线前建议把 actuator 的暴露面收窄**，只留 health 与 info：
+**调用链与日志**：服务把调用链以 OTLP over HTTP 导出到 `OTLP_TRACING_ENDPOINT`，网关、服务之间的 Feign 调用与
+RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema 的 JSON，每行带 `traceId` 与 `spanId`；
+部署环境采集容器 stdout 送到日志后端，按 `traceId` 关联调用链。本机 Grafana 的数据源配置
+（[`dev/config/datasources.yaml`](../dev/config/datasources.yaml)）已把日志行的 `traceId` 链到 Jaeger。
 
-```yaml
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-```
+**实例监控**：`mars-cloud-monitor` 经 Nacos 发现全部实例，按实例元数据里的 `management.port` 读取各实例的管理端点，
+实例状态变化写成日志通知。它只绑内网地址，不经网关，见该模块 README。
 
 ## 端口与 context path
 
@@ -183,6 +192,9 @@ management:
 | `mars-cloud-auth-service` | 8101 | （规划中） |
 | `mars-cloud-upms-service` | 8102 | `/upms` |
 | `mars-cloud-sample-service` | 8103 | `/sample` |
+| `mars-cloud-monitor` | 8190 | 无（只绑内网地址，不经网关） |
+
+每个服务的管理端口是业务端口加 1000（9100、9102、9103、9190），同样可随 `SERVER_PORT` 覆盖而跟着变化。
 
 端口一律可用 `SERVER_PORT` 覆盖。**服务间调用绕过网关**，因此每个服务都要自己完成鉴权，
 网关只是第一道——部署时不要假设「流量过了网关就一定是可信的」。
@@ -229,7 +241,7 @@ sample 到 UPMS 同样只经服务名调用。`mars-cloud-sample-service/verify-
 - [ ] 生产 profile **不在** `mars.env.dev-profiles` 里（否则失败响应会回带调试详情）
 - [ ] 数据库、Redis 等连接参数全部来自环境变量，配置文件里没有硬编码
 - [ ] Nacos 地址、Namespace 与凭据来自环境变量，配置正文没有明文凭据
-- [ ] actuator 暴露面已收窄，Swagger 已按需关闭
+- [ ] `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` 已配置，管理端口只在内网可达；Swagger 已按需关闭
 - [ ] `SERVER_PORT` 与编排/网关配置一致
 - [ ] 已配置优雅停机与足够的终止宽限期
 - [ ] 失败响应不泄露内部信息：抽查一个错误响应，确认 `result` 为 `null`

@@ -18,7 +18,7 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 `--sun-misc-unsafe-memory-access=allow`（Lombok 在 JDK 24 及以上编译期需要），无需手动设置；
 应用进程自己需要的同名参数见 [`docs/deployment.md`](docs/deployment.md) 的「JVM 参数」一节。
 测试 JVM 由框架 BOM 统一配置为以 `-javaagent` 预加载 mockito-core，因此**有测试的模块必须依赖
-`spring-boot-starter-test`**（本仓三个模块都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
+`spring-boot-starter-test`**（本仓四个模块都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
 `${org.mockito:mockito-core:jar}`。
 
 本仓依赖框架仓 `mars-cloud-framework`，而框架尚未发布到制品库，
@@ -54,6 +54,12 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 
 `./verify-security-e2e.sh` 通过测试 classpath 启动临时签发器，验证正常打包 jar 的认证与权限行为，并在结束时清理临时令牌。原有三份验收脚本也自动使用同一辅助流程。
 
+`./verify-observability-e2e.sh` 启动网关、UPMS、sample 与监控面板，经网关发起一次到 sample 再到 UPMS 的请求，核对：
+追踪后端里这次请求是一条链、三个进程各有 span；三个进程的结构化日志带同一个 `traceId`；日志推送到日志后端后按
+`traceId` 能查回三个服务；Grafana 的日志关联字段能从日志行链到这条调用链（用临时容器核对，需要 docker）；监控面板
+发现全部实例，并在实例下线时写出日志通知。端口、管理端点与面板的凭据、追踪与日志后端地址从 sample 的 `.env` 读取，
+变量见 [`.env.example`](.env.example)。
+
 本地中间件可由 [dev/README.md](dev/README.md) 的统一入口启动、初始化与验证。
 
 ## 服务
@@ -65,10 +71,13 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | 框架使用示例：一条命令跑起来的完整接线示范 | ✅ 已落地 |
 | `mars-cloud-<biz>-service` | 8104–8179 | `66000–99999` 内自选 | 业务服务，共用 `business` 区段、各自声明一段 | 规划中 |
-| `mars-cloud-monitor` | 8190 | 无 | 运行中实例的监控面板，只绑内网地址、不经网关 | 规划中 |
+| `mars-cloud-monitor` | 8190 | 无 | 运行中实例的监控面板（Spring Boot Admin），经 Nacos 发现实例，只绑内网地址、不经网关 | ✅ 已落地 |
 
 各服务逐个加入根聚合 POM 的 `<modules>`，已占用的错误码子区间登记在
 [docs/services.md](docs/services.md)。
+
+每个服务的管理端点（Actuator）在「业务端口加 1000」的管理端口上：`health` 匿名可读，其余端点要 Basic 认证。
+链路追踪、结构化日志与管理端点的约定由框架仓的 observability starter 统一给出。
 
 **想先看看怎么写一个服务**：`mars-cloud-sample-service` 是最小可运行示例，
 无数据库、无 Redis，并演示经 Nacos 服务名调用 UPMS：

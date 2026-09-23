@@ -3,10 +3,10 @@
 授权（AuthZ）的**决策侧**（PDP）：输入 subject / action / resource，输出 allow 或 deny。
 
 - 入口类：`com.mars.cloud.service.upms.UpmsApplication`
-- 端口：`8102`；context path：`/upms`
+- 端口：`8102`；context path：`/upms`；管理端口 `9102`（管理端点不带 context path）
 - 决策端点：`POST /upms/v1/decision`
-- 健康检查：`GET /upms/actuator/health`
-- Nacos 配置版本：`GET /upms/actuator/info`
+- 健康检查：管理端口上的 `GET /actuator/health`，匿名可读
+- Nacos 配置版本：管理端口上的 `GET /actuator/info`，带管理端点凭据
 - 错误码区间：`65000–65999`（框架权威分配表里的 `upms-service` 区段）
 
 ## 身份验证
@@ -113,12 +113,18 @@ mars:
       config-revision: revision-1
 ```
 
-修改并发布后，请求 `/upms/actuator/info`。`nacos.configRevision` 应在进程不重启的情况下更新。
+修改并发布后，带管理端点凭据请求管理端口的 `/actuator/info`，`nacos.configRevision` 应在进程不重启的情况下更新：
+
+```bash
+curl -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" http://127.0.0.1:9102/actuator/info
+```
+
 该端点只暴露版本标记，不暴露 Namespace、地址、配置正文或凭据。
 
 ## 依赖边界
 
-- 依赖框架仓的 `mars-cloud-nacos-spring-boot-starter`、`mars-cloud-mvc-spring-boot-starter`
-  与 `mars-cloud-mysql`，**不直接依赖**框架的 `common` 模块
+- 依赖框架仓的 `mars-cloud-nacos-spring-boot-starter`、`mars-cloud-mvc-spring-boot-starter`、
+  `mars-cloud-mysql` 与 `mars-cloud-observability-spring-boot-starter`，**不直接依赖**框架的 `common` 模块
   （信封与错误码契约由 starter 传递进来）
+- 声明 `spring-boot-starter-security`：管理端点的 Basic 认证链需要 Spring Boot 的 Web 安全模块
 - 与其他服务之间**不加编译期依赖**，只走 HTTP

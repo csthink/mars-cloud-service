@@ -4,7 +4,7 @@
 
 - 入口类：`com.mars.cloud.service.gateway.GatewayApplication`
 - 端口：`8100`；管理端口 `9100`；无 context path（路径原样转发给目标服务）
-- 健康检查：`GET /actuator/health`
+- 健康检查：管理端口上的 `GET /actuator/health`（`http://127.0.0.1:9100/actuator/health`）
 - 错误码区间：`63000–63999`（框架权威分配表里的 `gateway` 区段）
 
 ## 路由
@@ -39,10 +39,20 @@
 
 ```bash
 # UPMS 未启动时经网关访问：
-curl -i http://127.0.0.1:8100/upms/actuator/health
+curl -i -X POST http://127.0.0.1:8100/upms/v1/decision
 # HTTP/1.1 503
 # {"success":false,"code":"63002","message":"目标服务当前没有可用实例"}
 ```
+
+## 管理端点与可观测性
+
+框架的 observability starter 给出管理端口 `9100`（业务端口加 1000）、链路追踪与结构化日志：
+
+- 网关没有接入 Spring Security，管理端点只暴露 `health` 与 `info`，启动时打一条告警说明暴露面已收窄。
+- 每个经网关转发的请求在追踪后端里有网关的服务端与客户端两个 span，`traceparent` 随请求转发给目标服务，
+  下游进程接续同一条 trace。
+- 控制台日志是带 `traceId` 的 JSON。网关是响应式栈，请求处理会在 Reactor 线程之间切换，
+  starter 打开了 Reactor 的自动上下文传播，切换线程后的日志行仍带当前请求的 `traceId`。
 
 ## 本地启动
 
@@ -105,7 +115,8 @@ mvn -f .. package                 # 网关与 UPMS 都需要 package
 
 ## 依赖边界
 
-- 直接依赖框架仓的 `mars-cloud-common`（信封与错误码契约）与 `mars-cloud-nacos-spring-boot-starter`；
+- 直接依赖框架仓的 `mars-cloud-common`（信封与错误码契约）、`mars-cloud-nacos-spring-boot-starter`
+  与 `mars-cloud-observability-spring-boot-starter`；
   **不引入** Servlet 栈的 `mars-cloud-mvc-spring-boot-starter`——它的统一响应、异常处理与错误码校验都是 Servlet 实现，
   网关在 `web` 包里为响应式栈单独实现了同一契约
 - 错误码区间的启动期校验器也在 mvc starter 里，网关引不了，改由 `GatewayErrorCodeTest` 守住区间与 i18n 完整性
