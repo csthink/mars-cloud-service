@@ -99,12 +99,12 @@ DNS 解析器与 Linux 的 epoll）还必须带：
 
 | 层 | 位置 | 进版本库 | 放什么 |
 | --- | --- | --- | --- |
-| 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、**默认端口**、context path、i18n、错误码区间声明 |
+| 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、**默认端口**、**默认监听地址**（回环地址）、context path、i18n、错误码区间声明 |
 | profile 覆盖 | `src/main/resources/config/application-<profile>.yml` | ✅ | **仅**行为开关（自动装配排除项、时区、功能开关）。**不含任何 host / 端口 / 库名 / 口令** |
 | Nacos 动态配置 | 环境 Namespace 下的共享与应用 Data ID | ❌ | 非敏感、需要动态刷新的默认值与应用覆盖值 |
 | 环境取值 | 环境变量 | ❌ | 地址、端口、库名、口令 |
 
-「端口」在两处出现，口径是：**默认值进版本库**（让新克隆能直接跑起来），
+「端口」与「监听地址」在两处出现，口径是：**默认值进版本库**（让新克隆能直接跑起来），
 **部署时的实际取值必须由环境变量覆盖**。其余连接类参数则连默认值都不进版本库。
 
 `profile` 覆盖文件之所以能进版本库，是因为它对每个人、每台机器都是同一份。
@@ -123,6 +123,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | 激活的 profile，默认 `local` |
 | `SERVER_PORT` | 服务端口，覆盖配置文件里的值 |
+| `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址，缺省 `127.0.0.1`；部署时必填实例的私网 IP 地址，见「端口与 context path」 |
 | `NACOS_SERVER_ADDR` / `NACOS_NAMESPACE_ID` | Nacos 地址与环境 Namespace ID |
 | `NACOS_USERNAME` / `NACOS_PASSWORD` | Nacos 账号与密码 |
 | `MARS_SECURITY_ISSUER_URI` | sample / UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
@@ -184,7 +185,7 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 部署环境采集容器 stdout 送到日志后端，按 `traceId` 关联调用链。本机 Grafana 的数据源配置
 （[`dev/config/datasources.yaml`](../dev/config/datasources.yaml)）已把日志行的 `traceId` 链到 Jaeger。
 
-**实例监控**：`mars-cloud-monitor` 经 Nacos 发现全部实例，按实例元数据里的 `management.port` 读取各实例的管理端点，
+**实例监控**：`mars-cloud-monitor` 经 Nacos 发现全部实例，按实例的注册地址与元数据里的 `management.port` 读取各实例的管理端点，
 实例状态变化与实例被移除都写成日志通知。它只绑内网地址，不经网关，见该模块 README。
 
 ## 端口与 context path
@@ -198,6 +199,17 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 | `mars-cloud-monitor` | 8190 | 无（只绑内网地址，不经网关） |
 
 每个服务的管理端口是业务端口加 1000（9100、9102、9103、9190），同样可随 `SERVER_PORT` 覆盖而跟着变化。
+
+**监听地址**：每个服务的业务端口与管理端口都只绑定 `SERVER_ADDRESS`，注册到 Nacos 的也是这个地址，
+其他服务与网关按注册地址调用它。配置文件只写 `server.address: ${SERVER_ADDRESS:127.0.0.1}`；
+管理端口的地址由框架的 observability starter、注册地址由 nacos starter 从它推导，见两个 starter 的说明。
+
+- 不设置时是 `127.0.0.1`：本机开发与验收只监听回环地址，同一台机器上的服务互相可达。
+- 部署时必须设置为实例在私网里能被其他实例访问的 IP 地址。不填 `0.0.0.0` 或主机名：注册地址等于这个值，
+  通配地址注册后其他实例连不上，主机名不参与推导。
+- 在容器里运行时填容器在私网里的地址，缺省的回环地址在容器外不可达。
+- 注册地址与绑定地址需要不同时（例如容器端口映射），另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP` 与
+  `SPRING_CLOUD_NACOS_DISCOVERY_PORT`，显式配置优先于推导。
 
 端口一律可用 `SERVER_PORT` 覆盖。**服务间调用绕过网关**，因此每个服务都要自己完成鉴权，
 网关只是第一道——部署时不要假设「流量过了网关就一定是可信的」。
@@ -246,5 +258,6 @@ sample 到 UPMS 同样只经服务名调用。`mars-cloud-sample-service/verify-
 - [ ] Nacos 地址、Namespace 与凭据来自环境变量，配置正文没有明文凭据
 - [ ] `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` 已配置，管理端口只在内网可达；Swagger 已按需关闭
 - [ ] `SERVER_PORT` 与编排/网关配置一致
+- [ ] 每个实例都设置了 `SERVER_ADDRESS`，取值是实例的私网 IP 地址；从另一个实例能按这个地址连到它的业务端口与管理端口
 - [ ] 已配置优雅停机与足够的终止宽限期
 - [ ] 失败响应不泄露内部信息：抽查一个错误响应，确认 `result` 为 `null`

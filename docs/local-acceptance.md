@@ -82,7 +82,8 @@ sample 与 UPMS 启动时只校验签发器地址，要求见第 1 节。两项�
 | 带凭据读指标 | `curl -s -u mars-management http://127.0.0.1:9103/actuator/prometheus \| head` | 输入 `MARS_MANAGEMENT_PASSWORD` 后得到 Prometheus 文本；把账号换成 `.env` 里实际填写的值 |
 | 网关只暴露 health 与 info | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9100/actuator/prometheus` | `404`，带凭据也是 `404`；`/actuator/info` 匿名返回 `200`。网关没有接入 Spring Security，见 [网关说明](../mars-cloud-gateway/README.md) |
 | 业务端口上没有管理端点 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8100/actuator/health` | `404` |
-| 面板读到全部实例 | `curl -s -u monitor-admin -H 'Accept: application/json' http://127.0.0.1:8190/applications` | 四个应用 `mars-cloud-gateway`、`mars-cloud-upms-service`、`mars-cloud-sample-service`、`mars-cloud-monitor`，状态都是 `UP`；各实例的 `managementUrl` 端口依次是 9100、9102、9103、9190。面板刚启动时可能还没列出它自己，稍等再查 |
+| 只监听回环地址 | `lsof -nP -iTCP -sTCP:LISTEN \| grep -E ':(8100\|8102\|8103\|8190\|9100\|9102\|9103\|9190) '` | 八个端口都显示为 `127.0.0.1:<端口>`，没有 `*:<端口>` |
+| 面板读到全部实例 | `curl -s -u monitor-admin -H 'Accept: application/json' http://127.0.0.1:8190/applications` | 四个应用 `mars-cloud-gateway`、`mars-cloud-upms-service`、`mars-cloud-sample-service`、`mars-cloud-monitor`，状态都是 `UP`；各实例的 `managementUrl` 主机都是 `127.0.0.1`，端口依次是 9100、9102、9103、9190。面板刚启动时可能还没列出它自己，稍等再查 |
 | 请求留下调用链 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8100/sample/v1/orders/1`，再执行 `curl -s 'http://127.0.0.1:36686/api/traces?service=mars-cloud-gateway&lookback=5m&limit=5'` | 没有令牌时请求得到 `401`；追踪后端最近的一条链同时含 `mars-cloud-gateway` 与 `mars-cloud-sample-service` 的 span |
 
 ## 5. 浏览器检查
@@ -118,7 +119,6 @@ IDEA 启动的实例在 IDEA 里停止。中间件可以保留供下次使用；
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 面板里 gateway、UPMS、sample 的地址与面板自己的地址不同 | 实例地址来自 Nacos 注册信息。面板的业务端口、管理端口与注册地址都取 `SERVER_ADDRESS`（默认 `127.0.0.1`）；另外三个部署物注册的是 Spring Cloud Alibaba 自动选取的网卡地址 |
 | 业务请求 `401`，健康检查正常 | 测试签发器没有运行，或令牌已超过 5 分钟有效期，见 IDEA 指南第 5 节 |
 | 自动验收报端口被占用 | 先停掉 IDEA 或手工启动的实例，见第 6 节 |
 | 可观测性验收报「追踪后端查询地址必须给出」「监控面板账号必须给出」或「监控面板口令必须给出」 | `mars-cloud-sample-service/.env` 缺少第 1 节列出的变量，或其值为空（`JAEGER_QUERY`、`LOKI` 在模板里是注释） |

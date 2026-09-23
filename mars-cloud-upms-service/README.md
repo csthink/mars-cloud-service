@@ -67,7 +67,7 @@ cp ../.env.example .env # 填写本机 Nacos Namespace 与账号
 
 | 层 | 位置 | 进版本库 | 放什么 |
 | --- | --- | --- | --- |
-| 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、端口、context path、i18n、错误码区间声明 |
+| 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、端口、监听地址、context path、i18n、错误码区间声明 |
 | local profile | `src/main/resources/config/application-local.yml` | ✅ | **仅**行为开关：自动装配排除项、时区、种子快照开关。**刻意不含任何连接信息** |
 | Nacos 共享配置 | `COMMON/shared-common.yaml` | ❌ | 跨服务的非敏感动态默认值 |
 | Nacos 应用配置 | `DEFAULT_GROUP/mars-cloud-upms-service.yaml` | ❌ | UPMS 的非敏感动态覆盖值 |
@@ -75,6 +75,8 @@ cp ../.env.example .env # 填写本机 Nacos Namespace 与账号
 
 `application-local.yml` 之所以能进版本库，是因为它**不含任何环境相关的取值**——
 它对每个人、每台机器都是同一份。反过来，任何带 host / 口令的配置都不该进仓。
+
+业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IP 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
 
 ### `.env` 怎么用
 

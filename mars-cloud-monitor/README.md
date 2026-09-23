@@ -17,7 +17,7 @@
 | --- | --- |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | 面板管理员账号。任一为空即启动失败：面板能读到全部实例的管理端点，不能用默认口令或匿名开放 |
 | `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 面板读取各实例管理端点时使用的凭据，与各服务的管理端点凭据相同。任一为空即启动失败：面板照常运行却读不到实例需要认证的端点 |
-| `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址。部署时填私网地址，不要绑公网；在容器里运行时填容器在私网里的地址，默认的 `127.0.0.1` 在容器外不可达 |
+| `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址，规则与其他部署物相同（[部署说明](../docs/deployment.md) 的「端口与 context path」）。部署时填实例的私网 IP 地址，不要绑公网，不填通配地址或主机名；在容器里运行时填容器在私网里的地址，默认的 `127.0.0.1` 在容器外不可达 |
 
 浏览器访问 `http://127.0.0.1:8190/` 会被带到登录页；非浏览器的未登录请求得到 401。面板也接受 Basic 认证，
 例如用管理员账号读取实例列表：
@@ -36,7 +36,7 @@ curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http
 
 ## 实例发现
 
-面板经 `spring-boot-admin-server-cloud` 从 Nacos 读取实例，按实例元数据里的 `management.port` 找到 Actuator 端点。
+面板经 `spring-boot-admin-server-cloud` 从 Nacos 读取实例，按实例的注册地址与元数据里的 `management.port` 找到 Actuator 端点。
 这个元数据由各服务引入的 observability starter 在注册时写入；缺少它时面板会去业务端口找 Actuator 端点，而业务端口上没有。
 
 面板停机时先停止实例发现，再由 Nacos 注销面板并关闭客户端。Nacos 注销后还要等

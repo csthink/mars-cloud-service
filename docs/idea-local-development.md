@@ -115,7 +115,7 @@ done
 
 在编辑器中打开连接文件，将其中 `NACOS_SERVER_ADDR`、`NACOS_NAMESPACE_ID`、`NACOS_USERNAME`、`NACOS_PASSWORD` 的取值填入三个模块各自的 `.env`。使用已有环境时，填写其实际参数。保留其他有效配置，不整份覆盖已有 `.env`。
 
-三个模块均保持 `SPRING_PROFILES_ACTIVE=local`；UPMS 保持 `UPMS_LOCAL_FIXTURE_ENABLED=true`，用于加载演示权限数据。`SERVER_PORT` 保持注释，由各应用使用自己的默认端口。sample 不使用数据库或 Redis，UPMS 的 `local` 配置关闭了这两者的连接与健康检查。
+三个模块均保持 `SPRING_PROFILES_ACTIVE=local`；UPMS 保持 `UPMS_LOCAL_FIXTURE_ENABLED=true`，用于加载演示权限数据。`SERVER_PORT` 保持注释，由各应用使用自己的默认端口；`SERVER_ADDRESS` 同样保持注释，四个部署物只监听本机回环地址并按它注册到 Nacos。sample 不使用数据库或 Redis，UPMS 的 `local` 配置关闭了这两者的连接与健康检查。
 
 管理端点与调用链的变量按需填写，三个模块取值相同：
 
