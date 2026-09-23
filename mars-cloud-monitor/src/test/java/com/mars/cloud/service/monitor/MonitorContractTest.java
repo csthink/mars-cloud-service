@@ -3,6 +3,8 @@ package com.mars.cloud.service.monitor;
 import de.codecentric.boot.admin.server.cloud.discovery.InstanceDiscoveryListener;
 import de.codecentric.boot.admin.server.notify.DingTalkNotifier;
 import de.codecentric.boot.admin.server.notify.LoggingNotifier;
+import de.codecentric.boot.admin.server.ui.config.AdminServerUiProperties;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,13 +13,19 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -43,7 +51,68 @@ class MonitorContractTest {
     /** 浏览器未登录访问面板会被送到登录页，而不是直接看到实例列表。 */
     @Test void unauthenticatedBrowserIsRedirectedToTheLoginPage() throws Exception {
         mvc.perform(get("/applications").accept(MediaType.TEXT_HTML))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login"));
+    }
+
+    /**
+     * 表单登录带 CSRF 令牌与正确口令时成功，随后回到 redirectTo 指定的面板页面。
+     * 面板前端传的是当前页面的完整地址，本站的完整地址与站内路径都接受。
+     */
+    @Test void formLoginReturnsToTheRequestedPage() throws Exception {
+        mvc.perform(login().param("redirectTo", "/applications"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/applications"));
+        mvc.perform(login().param("redirectTo", "http://localhost/applications"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost/applications"));
+    }
+
+    /** redirectTo 指向别的站点时不跟随，回到面板首页：否则登录页可以被用来把管理员带到任意站点。 */
+    @Test void formLoginIgnoresARedirectToAnotherSite() throws Exception {
+        for (String target : new String[] {"https://attacker.example/", "//attacker.example/", "/\\attacker.example/",
+                "http://localhost:8080/applications", "javascript:alert(1)"}) {
+            mvc.perform(login().param("redirectTo", target))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/"));
+        }
+    }
+
+    /** 面板不接受手动登记实例：实例只经 Nacos 发现。 */
+    @Test void manualInstanceRegistrationIsRejected() throws Exception {
+        mvc.perform(post("/instances").with(admin()).with(uiCsrfToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"manual\",\"healthUrl\":\"http://127.0.0.1:1/actuator/health\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    /** 面板对实例的操作（例如改日志级别）要带 CSRF 令牌：登录后的管理员被诱导发起的跨站请求不能生效。 */
+    @Test void instanceOperationsRequireTheCsrfToken() throws Exception {
+        mvc.perform(post("/instances/unknown/actuator/loggers/ROOT").with(admin())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * 面板的前端从 XSRF-TOKEN Cookie 读出令牌原值、放进 X-XSRF-TOKEN 请求头。令牌因此要以前端可读的 Cookie 下发，
+     * 服务端也要接受原值；Spring Security 默认要求的是经过掩码的令牌，前端发来的原值会被拒绝。
+     * 首页加载的 sba-settings.js 读取令牌，Cookie 随它的响应写出。
+     */
+    @Test void theUiCanSendTheTokenItReadsFromTheCookie() throws Exception {
+        Cookie token = mvc.perform(get("/sba-settings.js").with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly("XSRF-TOKEN", false))
+                .andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).isNotNull();
+        mvc.perform(post("/logout").cookie(token)).andExpect(status().isForbidden());
+        // CSRF 校验通过后登出照常处理；响应码由登出配置决定，这里只核对没有因为令牌被拒。
+        mvc.perform(post("/logout").cookie(token).header("X-XSRF-TOKEN", token.getValue()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
+    }
+
+    /** 安全链没有配置「记住我」，登录页不显示这个选项。 */
+    @Test void rememberMeIsNotOffered() {
+        assertThat(context.getBean(AdminServerUiProperties.class).isRememberMeEnabled()).isFalse();
     }
 
     /**
@@ -62,9 +131,29 @@ class MonitorContractTest {
 
     /** 带正确凭据时可以读实例列表。 */
     @Test void instancesAreReadableWithCorrectCredentials() throws Exception {
-        mvc.perform(get("/applications").with(org.springframework.security.test.web.servlet.request
-                        .SecurityMockMvcRequestPostProcessors.httpBasic("monitor-admin", "monitor-secret")))
-                .andExpect(status().isOk());
+        mvc.perform(get("/applications").with(admin())).andExpect(status().isOk());
+    }
+
+    private static RequestPostProcessor admin() {
+        return httpBasic("monitor-admin", "monitor-secret");
+    }
+
+    private MockHttpServletRequestBuilder login() throws Exception {
+        return post("/login").with(uiCsrfToken()).param("username", "monitor-admin").param("password", "monitor-secret");
+    }
+
+    /**
+     * 按面板前端的做法带 CSRF 令牌：先从登录页的响应取 XSRF-TOKEN Cookie，再把原值放进 X-XSRF-TOKEN 请求头。
+     * 不用 Spring Security 测试工具的 csrf()：它会把共享上下文里的令牌存储换成会话存储，之后的请求不再下发 Cookie。
+     */
+    private RequestPostProcessor uiCsrfToken() throws Exception {
+        Cookie token = mvc.perform(get("/login")).andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).as("登录页的响应应当下发 XSRF-TOKEN Cookie").isNotNull();
+        return request -> {
+            request.setCookies(token);
+            request.addHeader("X-XSRF-TOKEN", token.getValue());
+            return request;
+        };
     }
 
     /**

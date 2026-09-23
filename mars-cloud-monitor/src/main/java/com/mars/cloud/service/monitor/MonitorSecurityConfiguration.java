@@ -1,10 +1,15 @@
 package com.mars.cloud.service.monitor;
 
 import de.codecentric.boot.admin.server.config.AdminServerProperties;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -12,6 +17,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 /**
  * 面板自身的访问控制：单个管理员账号、表单登录。
@@ -76,22 +88,82 @@ public class MonitorSecurityConfiguration {
     SecurityFilterChain marsMonitorSecurityFilterChain(HttpSecurity http,
                                                        AdminServerProperties admin) throws Exception {
         String contextPath = admin.getContextPath();
-        SavedRequestAwareAuthenticationSuccessHandler success = new SavedRequestAwareAuthenticationSuccessHandler();
-        success.setTargetUrlParameter("redirectTo");
-        success.setDefaultTargetUrl(contextPath + "/");
-
         return http
                 .authorizeHttpRequests(requests -> requests
                         // 面板自己的静态资源与登录页必须匿名可达，否则登录页加载不出来。
                         .requestMatchers(contextPath + "/assets/**").permitAll()
                         .requestMatchers(contextPath + "/login").permitAll()
+                        // Spring Boot Admin 在这里接受实例自行登记。本面板的实例只经 Nacos 发现，不开放这条路径。
+                        .requestMatchers(HttpMethod.POST, contextPath + "/instances").denyAll()
                         .anyRequest().authenticated())
-                .formLogin(login -> login.loginPage(contextPath + "/login").successHandler(success))
+                .formLogin(login -> login.loginPage(contextPath + "/login")
+                        .successHandler(new SameOriginRedirectSuccessHandler(contextPath + "/")))
                 .logout(logout -> logout.logoutUrl(contextPath + "/logout"))
                 .httpBasic(basic -> { })
-                // 被监控实例经这些路径上报与拉取，它们不带 CSRF 令牌。
-                .csrf(csrf -> csrf.ignoringRequestMatchers(
-                        contextPath + "/instances/**", contextPath + "/actuator/**"))
+                // 面板的前端是单页应用：从 XSRF-TOKEN Cookie 读出令牌原值、放进 X-XSRF-TOKEN 请求头。
+                // spa() 让令牌以前端可读的 Cookie 下发、请求头里的原值可以通过校验；对实例的操作同样要带令牌。
+                .csrf(csrf -> csrf.spa())
+                .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .build();
+    }
+
+    /**
+     * 每个请求都加载一次 CSRF 令牌，让 Cookie 始终存在。
+     *
+     * <p>Spring Security 只在有人读取令牌时才生成它并写 Cookie，而面板的页面只读令牌的请求头名；登录成功后令牌
+     * 会被更换、旧 Cookie 被删除，不主动加载的话前端之后发出的修改请求都会因为没有令牌被拒绝。
+     */
+    static final class CsrfCookieFilter extends OncePerRequestFilter {
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                throws ServletException, IOException {
+            CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+            if (token != null) {
+                token.getToken();
+            }
+            chain.doFilter(request, response);
+        }
+    }
+
+    /**
+     * 登录成功后回到 redirectTo 指定的页面，但只接受本站地址：站内路径，或协议、主机与端口都与本次请求相同的完整地址。
+     * 面板前端传的是当前页面的完整地址。其他取值回到面板首页，登录页因此不能被用来把管理员带到别的站点。
+     */
+    static final class SameOriginRedirectSuccessHandler extends SavedRequestAwareAuthenticationSuccessHandler {
+
+        SameOriginRedirectSuccessHandler(String defaultTargetUrl) {
+            setTargetUrlParameter("redirectTo");
+            setDefaultTargetUrl(defaultTargetUrl);
+        }
+
+        @Override
+        protected String determineTargetUrl(HttpServletRequest request, HttpServletResponse response) {
+            String target = super.determineTargetUrl(request, response);
+            return sameOrigin(target, request) ? target : getDefaultTargetUrl();
+        }
+
+        private static boolean sameOrigin(String target, HttpServletRequest request) {
+            URI uri;
+            try {
+                uri = new URI(target);
+            }
+            catch (URISyntaxException invalid) {
+                return false;
+            }
+            if (uri.getScheme() == null && uri.getRawAuthority() == null) {
+                return target.startsWith("/");
+            }
+            return request.getScheme().equalsIgnoreCase(uri.getScheme())
+                    && request.getServerName().equalsIgnoreCase(uri.getHost())
+                    && request.getServerPort() == effectivePort(uri);
+        }
+
+        private static int effectivePort(URI uri) {
+            if (uri.getPort() != -1) {
+                return uri.getPort();
+            }
+            return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+        }
     }
 }

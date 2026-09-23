@@ -26,6 +26,10 @@
 curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http://127.0.0.1:8190/applications
 ```
 
+修改类请求（例如在面板里调整实例的日志级别）都要带 CSRF 令牌：令牌以 `XSRF-TOKEN` Cookie 下发，面板前端把它放进
+`X-XSRF-TOKEN` 请求头，浏览器里使用不需要额外操作。登录后只跳回本站地址。面板不接受实例经 `POST /instances` 自行登记，
+实例只经 Nacos 发现。
+
 ## 实例发现
 
 面板经 `spring-boot-admin-server-cloud` 从 Nacos 读取实例，按实例元数据里的 `management.port` 找到 Actuator 端点。
