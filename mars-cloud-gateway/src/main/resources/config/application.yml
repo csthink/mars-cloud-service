@@ -42,6 +42,12 @@ mars:
 server:
   port: 8100
 
+logging:
+  level:
+    # 这个过滤器在 DEBUG 级别把转发请求的全部请求头写进日志，其中有 Authorization 里的访问令牌。
+    # 固定为 INFO：排查时把网关的包整体调到 DEBUG，访问令牌也不会进日志。
+    org.springframework.cloud.gateway.filter.headers.observation: INFO
+
 
 ---
 spring:
