@@ -95,6 +95,7 @@ python3 dev/middleware.py export-env --slot 0
 | `DEFAULT_GROUP` | `mars-cloud-gateway.yaml` |
 | `DEFAULT_GROUP` | `mars-cloud-sample-service.yaml` |
 | `DEFAULT_GROUP` | `mars-cloud-upms-service.yaml` |
+| `DEFAULT_GROUP` | `mars-cloud-monitor.yaml`（启动监控面板时） |
 
 项目中间件入口会初始化这些配置；已有环境的准备要求见各模块 README。Config 与 Discovery 必须指向同一个 Namespace ID，不能把控制台显示名称当作 ID。
 

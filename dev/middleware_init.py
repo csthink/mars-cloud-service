@@ -12,6 +12,7 @@ CONFIGS = {
     ('DEFAULT_GROUP', 'mars-cloud-gateway.yaml'): 'mars:\n  gateway:\n    config-revision: local-1\n',
     ('DEFAULT_GROUP', 'mars-cloud-upms-service.yaml'): 'mars:\n  upms:\n    nacos:\n      config-revision: local-1\n',
     ('DEFAULT_GROUP', 'mars-cloud-sample-service.yaml'): 'mars:\n  sample:\n    config-revision: local-1\n',
+    ('DEFAULT_GROUP', 'mars-cloud-monitor.yaml'): 'mars:\n  monitor:\n    config-revision: local-1\n',
 }
 
 

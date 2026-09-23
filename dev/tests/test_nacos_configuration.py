@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 import sys
@@ -176,7 +177,7 @@ class ConfigurationOperations(unittest.TestCase):
             for key, value in before.items(): self.assertEqual(self.api.values[key], value)
             count = len(self.api.writes);init.initialize_nacos(self.e)
             self.assertEqual(len(self.api.writes), count)
-            self.assertEqual(len(self.api.values), 5)
+            self.assertEqual(len(self.api.values), len(init.CONFIGS) + len(self.e.nacos_configurations))
             init.verify_selected_configurations(self.e, self.api)
 
     def test_late_conflict_prevents_earlier_missing_writes(self):
@@ -231,3 +232,22 @@ class ApplicationCredentials(unittest.TestCase):
             with self.assertRaises(m.Failure):init.initialize_nacos_client(e)
         self.assertNotIn('nacos_client',e.credentials)
         api.call.assert_not_called()
+
+
+class SeededApplicationConfigurations(unittest.TestCase):
+    def test_every_deployable_importing_its_application_configuration_is_seeded(self):
+        """A deployable that imports DEFAULT_GROUP/<application name>.yaml needs a seeded configuration.
+
+        Nacos only logs an empty-configuration warning when the data ID is missing, so a module added
+        without a seed starts normally and the gap goes unnoticed.
+        """
+        repository = Path(__file__).resolve().parents[2]
+        checked = []
+        for path in sorted(repository.glob('mars-cloud-*/src/main/resources/config/application.yml')):
+            text = path.read_text()
+            if 'nacos:${spring.application.name}.yaml' not in text:
+                continue
+            name = re.search(r'^\s+application:\s*\n\s+name:\s*(\S+)\s*$', text, re.M).group(1)
+            checked.append(name)
+            self.assertIn(('DEFAULT_GROUP', name + '.yaml'), init.CONFIGS, path)
+        self.assertIn('mars-cloud-monitor', checked)
