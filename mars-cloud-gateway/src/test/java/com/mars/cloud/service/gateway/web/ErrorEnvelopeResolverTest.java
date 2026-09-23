@@ -67,7 +67,7 @@ class ErrorEnvelopeResolverTest {
                 .isEqualTo(GatewayErrorCode.UPSTREAM_CONNECT_FAILED.getCode());
         assertThat(resolver.resolve(new ConnectTimeoutException("connect timed out")).status())
                 .isEqualTo(HttpStatus.BAD_GATEWAY);
-        assertThat(resolver.resolve(new UnknownHostException("Failed to resolve 'upms.internal'")).code())
+        assertThat(resolver.resolve(new UnknownHostException("Failed to resolve 'upms.example'")).code())
                 .isEqualTo(GatewayErrorCode.UPSTREAM_CONNECT_FAILED.getCode());
     }
 
