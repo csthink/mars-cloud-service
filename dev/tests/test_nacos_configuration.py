@@ -251,3 +251,87 @@ class SeededApplicationConfigurations(unittest.TestCase):
             checked.append(name)
             self.assertIn(('DEFAULT_GROUP', name + '.yaml'), init.CONFIGS, path)
         self.assertIn('mars-cloud-monitor', checked)
+
+
+class NumberedEnvironmentNamespaces(unittest.TestCase):
+    """A numbered environment namespace is filled by an external workflow: initialization seeds only
+    the missing items there and never compares content, while every other namespace stays strict."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.e = m.Environment(m.parser().parse_args(['up', '--slots', '0,2']))
+        self.e.state = Path(self.temp.name)
+        self.e.nacos_configurations = [dict(namespace='mars-slot-2', group='DEFAULT_GROUP',
+                                            data_id='mars-cloud-gateway.yaml', type='yaml', content='selected: gateway\n')]
+        self.api = FakeNacos()
+        self.api.namespaces.add('mars-slot-2')
+        self.api.values[('mars-slot-2', 'COMMON', 'shared-common.yaml')] = dict(content='synchronized: base\n', type='yaml')
+        self.api.values[('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-gateway.yaml')] = dict(content='synchronized: gateway\n', type='text')
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def initialize(self):
+        with patch.object(init, 'Nacos', return_value=self.api):
+            init.initialize_nacos(self.e)
+
+    def test_existing_numbered_content_is_neither_compared_nor_overwritten(self):
+        self.initialize()
+        written = {key for key, _ in self.api.writes if key != 'namespace'}
+        seeded = {('mars-slot-2', 'DEFAULT_GROUP', name) for name in
+                  ('mars-cloud-upms-service.yaml', 'mars-cloud-sample-service.yaml', 'mars-cloud-monitor.yaml')}
+        self.assertEqual(written, seeded | {('mars-local', group, data_id) for group, data_id in init.CONFIGS})
+        self.assertEqual(self.api.values[('mars-slot-2', 'COMMON', 'shared-common.yaml')], dict(content='synchronized: base\n', type='yaml'))
+        self.assertEqual(self.api.values[('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-gateway.yaml')], dict(content='synchronized: gateway\n', type='text'))
+        init.verify_selected_configurations(self.e, self.api)
+        rows = {(row['namespace'], row['data_id']): row for row in json.loads((self.e.state / 'nacos-initialization.json').read_text())}
+        self.assertFalse(rows[('mars-slot-2', 'shared-common.yaml')]['content_checked'])
+        self.assertEqual(rows[('mars-slot-2', 'shared-common.yaml')]['sha256'], hashlib.sha256(b'synchronized: base\n').hexdigest())
+        self.assertEqual(rows[('mars-slot-2', 'mars-cloud-gateway.yaml')]['type'], 'text')
+        self.assertTrue(rows[('mars-local', 'shared-common.yaml')]['content_checked'])
+
+    def test_missing_numbered_namespace_and_items_are_seeded_from_selection_or_template(self):
+        self.api.namespaces.clear()
+        self.api.values.clear()
+        self.initialize()
+        self.assertEqual(self.api.namespaces, {'mars-local', 'mars-slot-2'})
+        self.assertEqual(self.api.values[('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-gateway.yaml')], dict(content='selected: gateway\n', type='yaml'))
+        self.assertEqual(self.api.values[('mars-slot-2', 'COMMON', 'shared-common.yaml')],
+                         dict(content=init.CONFIGS[('COMMON', 'shared-common.yaml')], type='yaml'))
+        init.verify_selected_configurations(self.e, self.api)
+
+    def test_missing_or_empty_numbered_item_fails_verification_until_up_recreates_it(self):
+        self.initialize()
+        key = ('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-monitor.yaml')
+        removed = self.api.values.pop(key)
+        with self.assertRaises(m.Failure) as failed:
+            init.verify_selected_configurations(self.e, self.api)
+        self.assertIn('/'.join(key), str(failed.exception))
+        self.initialize()
+        self.assertEqual(self.api.values[key], removed)
+        init.verify_selected_configurations(self.e, self.api)
+        self.api.values[key] = dict(content=' \n', type='yaml')
+        with self.assertRaises(m.Failure):
+            init.verify_selected_configurations(self.e, self.api)
+
+    def test_base_conflict_still_stops_before_any_write(self):
+        self.api.namespaces.add('mars-local')
+        self.api.values[('mars-local', 'COMMON', 'shared-common.yaml')] = dict(content='foreign', type='yaml')
+        with patch.object(init, 'Nacos', return_value=self.api), self.assertRaises(m.Failure):
+            init.initialize_nacos(self.e)
+        self.assertEqual(self.api.writes, [])
+        with self.assertRaises(m.Failure):
+            init.verify_selected_configurations(self.e, self.api)
+
+    def test_namespace_outside_selected_environments_is_checked_strictly(self):
+        self.e.nacos_configurations.append(dict(namespace='mars-slot-5', group='COMMON', data_id='shared-common.yaml',
+                                                type='yaml', content='preserved\n'))
+        self.api.namespaces.add('mars-slot-5')
+        self.api.values[('mars-slot-5', 'COMMON', 'shared-common.yaml')] = dict(content='foreign', type='yaml')
+        with patch.object(init, 'Nacos', return_value=self.api), self.assertRaises(m.Failure):
+            init.initialize_nacos(self.e)
+        self.assertEqual(self.api.writes, [])
+        self.e.args.slots = [0, 2, 5]
+        self.initialize()
+        self.assertEqual(self.api.values[('mars-slot-5', 'COMMON', 'shared-common.yaml')], dict(content='foreign', type='yaml'))
+        init.verify_selected_configurations(self.e, self.api)

@@ -87,22 +87,58 @@ class Nacos:
                 raise Failure('Nacos pagination ended before all configurations were read')
 
 
+def numbered_namespaces(e):
+    """Namespaces of the numbered environments selected by --slots (never the base namespace)."""
+    return {e.args.namespace_prefix + str(n) for n in e.args.slots if n != 0}
+
+
 def expected_nacos(e):
+    """Seed content for every namespace, with ``checked`` saying whether existing content is compared.
+
+    A numbered environment namespace belongs to the development workflow that fills it from a base
+    namespace, so initialization only creates what is missing there and never compares or overwrites
+    existing content. The base namespace and every other namespace named by the selected configuration
+    keep the strict rule: existing content and type must equal the template or the selection.
+    """
+    numbered = numbered_namespaces(e)
     expected = {}
     for n in e.args.slots:
         namespace = e.args.base_namespace if n == 0 else e.args.namespace_prefix + str(n)
         for (group, data_id), content in CONFIGS.items():
-            expected[(namespace, group, data_id)] = dict(content=content, type='yaml')
+            expected[(namespace, group, data_id)] = dict(content=content, type='yaml', checked=namespace not in numbered)
     for row in e.nacos_configurations:
-        expected[(row['namespace'], row['group'], row['data_id'])] = dict(content=row['content'], type=row['type'])
+        expected[(row['namespace'], row['group'], row['data_id'])] = dict(
+            content=row['content'], type=row['type'], checked=row['namespace'] not in numbered)
     return expected
 
 
+def differs(actual, value):
+    return any(actual.get(field) != value[field] for field in ('content', 'type'))
+
+
+def read_back(api, key, value, mismatch):
+    """Read one configuration and apply the rule of its namespace.
+
+    A checked namespace must hold the expected content and type. A numbered environment namespace only
+    needs the configuration to exist with nonempty content; Nacos answers 404 when it is missing.
+    """
+    try:
+        actual = api.call('GET', 'admin/cs/config', dict(namespaceId=key[0], groupName=key[1], dataId=key[2]))
+    except HttpFailure as error:
+        if error.status != 404:
+            raise
+        raise Failure('Nacos configuration is missing; run up to create it: ' + '/'.join(key)) from None
+    if value['checked']:
+        if differs(actual, value):
+            raise Failure(mismatch + '/'.join(key))
+    elif not str(actual.get('content') or '').strip():
+        raise Failure('Nacos configuration is empty: ' + '/'.join(key))
+    return actual
+
+
 def verify_selected_configurations(e, api):
-    for (namespace, group, data_id), value in expected_nacos(e).items():
-        actual = api.call('GET', 'admin/cs/config', dict(namespaceId=namespace, groupName=group, dataId=data_id))
-        if any(actual.get(field) != value[field] for field in ('content', 'type')):
-            raise Failure('Nacos initialization content differs: ' + '/'.join((namespace, group, data_id)))
+    for key, value in expected_nacos(e).items():
+        read_back(api, key, value, 'Nacos initialization content differs: ')
 
 
 def initialize_nacos(e):
@@ -121,24 +157,26 @@ def initialize_nacos(e):
             if key not in expected:
                 continue
             present.add(key)
+            if not expected[key]['checked']:
+                continue  # Existing content of a numbered environment namespace is never compared.
             actual = api.call('GET', 'admin/cs/config', dict(namespaceId=key[0], groupName=key[1], dataId=key[2]))
-            if any(actual.get(field) != expected[key][field] for field in ('content', 'type')):
+            if differs(actual, expected[key]):
                 raise Failure('Nacos configuration conflict: ' + '/'.join(key))
     for namespace in namespaces:
         if namespace not in existing:
             api.call('POST', 'admin/core/namespace', dict(namespaceId=namespace, namespaceName=namespace,
                                                         namespaceDesc='Local application environment'))
     rows = []
-    for (namespace, group, data_id), value in sorted(expected.items()):
-        params = dict(namespaceId=namespace, groupName=group, dataId=data_id)
-        if (namespace, group, data_id) not in present:
-            api.call('POST', 'admin/cs/config', {**params, **value})
-        actual = api.call('GET', 'admin/cs/config', params)
-        if any(actual.get(field) != value[field] for field in ('content', 'type')):
-            raise Failure('Nacos configuration readback failed')
-        content = value['content'].encode()
-        rows.append(dict(namespace=namespace, group=group, data_id=data_id,
-                         sha256=hashlib.sha256(content).hexdigest(), bytes=len(content), type=value['type']))
+    for key, value in sorted(expected.items()):
+        if key not in present:
+            api.call('POST', 'admin/cs/config', dict(namespaceId=key[0], groupName=key[1], dataId=key[2],
+                                                    content=value['content'], type=value['type']))
+        actual = read_back(api, key, value, 'Nacos configuration readback failed: ')
+        # Rows of a numbered environment namespace record what was read, not the seed that may differ.
+        content = actual['content'].encode()
+        rows.append(dict(namespace=key[0], group=key[1], data_id=key[2],
+                         sha256=hashlib.sha256(content).hexdigest(), bytes=len(content), type=actual.get('type'),
+                         content_checked=value['checked']))
     protected_write(e.state / 'nacos-initialization.json', json.dumps(rows, indent=2) + '\n')
 
 

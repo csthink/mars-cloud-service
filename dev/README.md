@@ -26,7 +26,7 @@ python3 dev/middleware.py down --project mars-lab-check --offset 30000
 
 状态与随机凭据在 ignored `dev/.local/<项目名>/`，目录权限 0700，凭据文件权限 0600。可通过 `--state-dir` 指定另外的私有目录；备份时同时保存状态目录与对应数据卷。管理员用户名分别为 Nacos 的 `nacos`、Grafana 与 xxl-job 的 `admin`，密码在受保护的 `credentials.json` 对应字段中。不要提交、粘贴或公开这些文件。连接变量由 `export-env` 写入新文件，拒绝覆盖已有文件；`--output` 可另选输出路径。
 
-默认建立一个基准 Namespace 和编号 1 到 6 的环境，编号由 `--slots` 明确选择，名称由 `--base-namespace` 与 `--namespace-prefix` 指定。每个 Namespace 初始化共享配置及 gateway、UPMS、sample、monitor 应用配置。已有内容不一致时入口停止，需确认配置来源再处理。MySQL 为 auth、upms、product、order、notice 各建独立数据库与账号，编号环境使用 `_sN` 后缀；这不代表相应应用或业务表已经实现。Redis 数据库号隔离数据，不构成账号权限边界。
+默认建立一个基准 Namespace 和编号 1 到 6 的环境，编号由 `--slots` 明确选择，名称由 `--base-namespace` 与 `--namespace-prefix` 指定。每个 Namespace 初始化共享配置及 gateway、UPMS、sample、monitor 应用配置。两类 Namespace 的规则不同：基准 Namespace 与配置清单里的其他 Namespace 归初始化管理，已有内容或类型与模板或清单不一致时入口停止，需确认配置来源再处理；编号环境的 Namespace 归使用这些环境的开发流程管理，初始化只创建缺失的 Namespace 与缺失的配置项，不比较也不覆盖已有内容，`verify` 只核对配置项存在且非空。编号环境里配置内容的错误由读取它的应用在启动期暴露，不由中间件入口拦截；初始化与外部同步不要对同一个编号环境同时运行。MySQL 为 auth、upms、product、order、notice 各建独立数据库与账号，编号环境使用 `_sN` 后缀；这不代表相应应用或业务表已经实现。Redis 数据库号隔离数据，不构成账号权限边界。
 
 迁移已有 Nacos 配置时，先停用其他配置写入并备份、逐项确认需要保留的内容。把确认结果写入仅当前用户可读写的 JSON 文件，再运行 `python3 dev/middleware.py up --nacos-config-file <文件>`。示例格式如下，内容字符串保留原有空白与换行：
 
@@ -34,9 +34,9 @@ python3 dev/middleware.py down --project mars-lab-check --offset 30000
 {"schema":1,"configurations":[{"namespace":"previous-environment","group":"COMMON","data_id":"shared-common.yaml","type":"yaml","content":"feature: enabled\n"}]}
 ```
 
-清单中的条目替代对应的默认初始化内容，也可增加原环境的 Namespace 和配置；未指定的默认项照常初始化。清单及其摘要原子写入本项目受保护的 `binding.json`，之后不带该参数的 `up` 自动使用保存副本。显式传入不同清单、记录丢失或摘要不符会失败。`binding.json` 现在可能包含配置正文，应与凭据一同保护和备份。
+清单中的条目替代对应的默认初始化内容，也可增加原环境的 Namespace 和配置；未指定的默认项照常初始化。落在编号环境 Namespace 里的条目只作为缺失时的初始内容，不参与内容核对。清单及其摘要原子写入本项目受保护的 `binding.json`，之后不带该参数的 `up` 自动使用保存副本。显式传入不同清单、记录丢失或摘要不符会失败。`binding.json` 现在可能包含配置正文，应与凭据一同保护和备份。
 
-该参数不执行覆盖：入口先检查全部目标，已有内容或类型不同即停止。配置导入需在单独核对源和目标之后执行，保留原配置与备份；再次启动只补充缺失项并逐项读回。`verify` 同样检查完整清单，不能以其他探测成功代替原配置仍存在的证明。
+该参数不执行覆盖：入口先检查全部目标，基准 Namespace 与清单里其他 Namespace 的已有内容或类型不同即停止。配置导入需在单独核对源和目标之后执行，保留原配置与备份；再次启动只补充缺失项并逐项读回。`verify` 同样检查完整清单：基准 Namespace 与清单里其他 Namespace 核对内容与类型，编号环境 Namespace 只核对存在；不能以其他探测成功代替原配置仍存在的证明。
 
 初始化另外建立本项目专用的 Nacos 客户端账号。`export-env` 使用该账号的独立凭据，不输出管理员凭据；旧状态需成功执行新版 `up` 后才能导出。客户端可读写已初始化 Namespace 的配置并注册、发现服务，也可列出 Namespace；账号、角色和权限管理仍由管理员执行。原环境的客户端连接应保留对应 Namespace ID，不能直接用默认编号 0 的导出值替换。
 
