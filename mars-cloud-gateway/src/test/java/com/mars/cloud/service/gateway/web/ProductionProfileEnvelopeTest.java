@@ -12,8 +12,9 @@ import org.springframework.test.web.reactive.server.WebTestClient;
  * 非开发环境下失败响应不得回带调试详情：{@code result} 必须缺席。
  *
  * <p>做法是把 {@code mars.env.dev-profiles} 改成一个测试进程不会激活的名字，
- * 这样激活的 local / test 都不再算开发环境。非开发环境要求配好管理端点的凭据，
- * 所以这里一并给出，与真实部署一致。
+ * 这样激活的 local / test 都不再算开发环境。管理端点的凭据按真实部署一并给出；
+ * 网关的 classpath 上没有 Spring Boot 的 Web 安全模块，建不起管理端点的认证链，
+ * 可观测性组件因此把暴露面收窄为 health 与 info 并告警，上下文照常启动。
  */
 @SpringBootTest(
         classes = GatewayApplication.class,
@@ -25,12 +26,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
         })
 @ActiveProfiles({"local", "test"})
 @AutoConfigureWebTestClient
-// 本用例关掉 Web 安全装配来单测错误信封，因此也要排除管理端点的认证链：
-// 它要求 ServerHttpSecurity 可用，缺了会让上下文起不来。
-@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude="
-        + "com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,"
-        + "com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration,"
-        + "com.mars.cloud.observability.autoconfigure.ReactiveManagementSecurityAutoConfiguration")
+@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
 class ProductionProfileEnvelopeTest {
 
     @Autowired
