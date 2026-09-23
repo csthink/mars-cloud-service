@@ -16,7 +16,7 @@
 | 变量 | 作用 |
 | --- | --- |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | 面板管理员账号。任一为空即启动失败：面板能读到全部实例的管理端点，不能用默认口令或匿名开放 |
-| `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 面板读取各实例管理端点时使用的凭据，与各服务的管理端点凭据相同 |
+| `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 面板读取各实例管理端点时使用的凭据，与各服务的管理端点凭据相同。任一为空即启动失败：面板照常运行却读不到实例需要认证的端点 |
 | `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址。部署时填私网地址，不要绑公网；在容器里运行时填容器在私网里的地址，默认的 `127.0.0.1` 在容器外不可达 |
 
 浏览器访问 `http://127.0.0.1:8190/` 会被带到登录页；非浏览器的未登录请求得到 401。面板也接受 Basic 认证，

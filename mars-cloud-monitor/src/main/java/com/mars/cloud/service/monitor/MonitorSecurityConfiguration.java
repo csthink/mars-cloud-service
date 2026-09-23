@@ -34,6 +34,10 @@ import java.net.URISyntaxException;
 @Configuration(proxyBeanMethods = false)
 public class MonitorSecurityConfiguration {
 
+    /** 读取实例管理端点的凭据为空时的启动失败消息。 */
+    static final String INSTANCE_CREDENTIALS_MISSING = "监控面板读取实例管理端点的凭据不能为空："
+            + "MARS_MANAGEMENT_USERNAME 与 MARS_MANAGEMENT_PASSWORD 都要给出非空值";
+
     /** 面板管理员账号，来自环境变量 MONITOR_USERNAME 与 MONITOR_PASSWORD。 */
     @ConfigurationProperties(prefix = "mars.monitor.admin")
     public static class AdminAccount implements InitializingBean {
@@ -69,6 +73,26 @@ public class MonitorSecurityConfiguration {
     @Bean
     AdminAccount marsMonitorAdminAccount() {
         return new AdminAccount();
+    }
+
+    /**
+     * 面板读取实例管理端点时带的凭据，来自 MARS_MANAGEMENT_USERNAME 与 MARS_MANAGEMENT_PASSWORD。
+     * 环境变量存在但为空时占位符照样解析成空串，面板能启动，却读不到实例需要认证的端点，所以按缺失处理、拒绝启动。
+     * 配置里没有这两项时（测试 profile）不检查。
+     */
+    @Bean
+    InitializingBean marsMonitorInstanceCredentialsGuard(AdminServerProperties admin) {
+        return () -> {
+            AdminServerProperties.InstanceAuthProperties auth = admin.getInstanceAuth();
+            if (auth.isEnabled() && (blank(auth.getDefaultUserName()) || blank(auth.getDefaultPassword()))) {
+                throw new IllegalStateException(INSTANCE_CREDENTIALS_MISSING);
+            }
+        };
+    }
+
+    /** 配置了但只有空白字符；没有配置（null）不算。 */
+    private static boolean blank(String value) {
+        return value != null && value.isBlank();
     }
 
     @Bean

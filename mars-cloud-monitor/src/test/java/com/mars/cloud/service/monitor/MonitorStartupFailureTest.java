@@ -48,6 +48,22 @@ class MonitorStartupFailureTest {
     }
 
     /**
+     * 读取实例管理端点的凭据为空时拒绝启动：环境变量存在但为空，占位符照样解析成空串，面板能启动，
+     * 却读不到实例需要认证的端点。
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"default-user-name", "default-password"})
+    void refusesToStartWhenAnInstanceCredentialIsBlank(String blank) {
+        assertThatThrownBy(() -> start(
+                "spring.boot.admin.instance-auth.default-user-name=ops",
+                "spring.boot.admin.instance-auth.default-password=ops-secret",
+                "spring.boot.admin.instance-auth." + blank + "="))
+                .rootCause()
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(MonitorSecurityConfiguration.INSTANCE_CREDENTIALS_MISSING);
+    }
+
+    /**
      * 钉钉通知暂不支持：配置了地址就拒绝启动，不装配一个发不出去的通知器。
      * 空值也算配置：面板自带的装配条件只看这个属性是否存在。
      */
