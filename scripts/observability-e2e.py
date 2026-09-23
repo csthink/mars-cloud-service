@@ -211,23 +211,38 @@ def monitor_headers():
     return {'Authorization': 'Basic ' + token, 'Accept': 'application/json'}
 
 
+def monitor_applications(monitor_base, headers):
+    """Read the monitor's application list: (applications, None), or (None, reason) when the read failed.
+
+    Connection failures and error statuses are reported rather than raised, so callers polling the monitor
+    keep polling through a transient failure; urlopen raises HTTPError, a URLError, for 4xx and 5xx.
+    """
+    try:
+        status, body = fetch(f'{monitor_base}/applications', headers)
+    except urllib.error.URLError as error:
+        return None, f'读取监控面板失败：{error}'
+    if status != 200:
+        return None, f'读取监控面板返回 {status}'
+    return json.loads(body), None
+
+
 def command_applications(monitor_base, expected):
     """The monitor must list every expected application with an UP status."""
     headers = monitor_headers()
+    problem = '监控面板没有列出全部实例'
     for _ in range(20):
-        try:
-            status, body = fetch(f'{monitor_base}/applications', headers)
-        except urllib.error.URLError as error:
-            print(f'读取监控面板失败：{error}', file=sys.stderr)
-            return 1
-        if status == 200:
-            applications = json.loads(body)
+        applications, failure = monitor_applications(monitor_base, headers)
+        if applications is not None:
             up = {item.get('name') for item in applications
                   if item.get('status') == 'UP'}
-            if not set(expected) - up:
+            missing = set(expected) - up
+            if not missing:
                 return 0
+            problem = f'监控面板里没有状态为 UP 的 {", ".join(sorted(missing))}'
+        else:
+            problem = failure
         time.sleep(3)
-    print('监控面板没有列出全部实例', file=sys.stderr)
+    print(problem, file=sys.stderr)
     return 1
 
 
@@ -275,13 +290,9 @@ def command_registered_host(monitor_base, host, names):
     headers = monitor_headers()
     problems = []
     for _ in range(20):
-        try:
-            status, body = fetch(f'{monitor_base}/applications', headers)
-        except urllib.error.URLError as error:
-            print(f'读取监控面板失败：{error}', file=sys.stderr)
-            return 1
-        problems = [] if status == 200 else [f'读取监控面板返回 {status}']
-        applications = {item.get('name'): item for item in json.loads(body)} if status == 200 else {}
+        listed, failure = monitor_applications(monitor_base, headers)
+        problems = [] if failure is None else [failure]
+        applications = {item.get('name'): item for item in listed or []}
         for name in names:
             instances = (applications.get(name) or {}).get('instances', [])
             if not instances:
