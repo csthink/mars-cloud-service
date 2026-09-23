@@ -45,8 +45,9 @@ else:
     check('anonymous sample health probe on the management port', status == 200 and body.get('status') == 'UP')
     status, body, _, _ = request(upms_management, '/actuator/health')
     check('anonymous UPMS health probe on the management port', status == 200 and body.get('status') == 'UP')
-    # 业务端口的地址带 context path；安全组件对健康探针路径放行，没有管理端点时请求落到 404。
-    status, _, _, _ = request(sample, '/actuator/health')
+    # 业务端口的地址带 context path。带有效令牌请求，业务安全链放行后没有管理端点就落到 404；
+    # 匿名请求会先被业务安全链拒绝，证明不了业务端口上有没有管理端点。
+    status, _, _, _ = request(sample, '/actuator/health', 'admin')
     check('sample business port exposes no actuator', status == 404)
     status, body, headers, _ = request(sample, '/v1/security/me')
     check('missing token returns 401 / 62001', status == 401 and body.get('code') == '62001')
