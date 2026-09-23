@@ -19,11 +19,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 面板在配置不可用时拒绝启动，而不是带着错误配置运行。
  *
  * <p>每条用例真实启动一次面板，业务端口取随机值，管理端点与业务端点共用端口。
+ * Spring Boot 对任何启动失败都打一条通用的 ERROR，日志检查不能为它登记例外：那会放行所有启动失败。
+ * 所以用例关掉这一个 logger，失败原因由断言核对。
  */
 class MonitorStartupFailureTest {
 
     private static final String[] VALID = {
             "server.port=0",
+            "logging.level.org.springframework.boot.SpringApplication=off",
             "mars.monitor.admin.username=monitor-admin",
             "mars.monitor.admin.password=monitor-secret",
             "mars.observability.management.port-offset=0",
