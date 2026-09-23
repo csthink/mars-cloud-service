@@ -138,8 +138,9 @@ public class MonitorSecurityConfiguration {
     /**
      * 每个请求都加载一次 CSRF 令牌，让 Cookie 始终存在。
      *
-     * <p>Spring Security 只在有人读取令牌值时才生成它并写 Cookie，而面板的页面只读令牌的参数名与请求头名；
-     * 登录成功后令牌会被更换、旧 Cookie 被删除，不主动加载的话前端之后发出的修改请求都会因为没有令牌被拒绝。
+     * <p>Spring Security 只在有人访问令牌时才生成它并写 Cookie，面板的数据接口与静态资源都不访问令牌。
+     * 登录成功后令牌会被更换、旧 Cookie 被删除；不主动加载的话，前端在下一次打开访问令牌的页面之前发出的修改请求
+     * 都会因为没有令牌被拒绝。这个过滤器让登录换令牌之后的每个响应都带上新的 Cookie。
      */
     static final class CsrfCookieFilter extends OncePerRequestFilter {
 
