@@ -34,9 +34,30 @@ class MonitorStartupFailureTest {
             "mars.observability.management.password=ops-secret"
     };
 
-    /** 对照：有效配置能启动，下面两条的失败因此只能来自各自改动的那一项。 */
+    /** 对照：有效配置能启动，下面几条的失败因此只能来自各自改动的那一项。 */
     @Test void startsWithAValidConfiguration() {
         assertThatNoException().isThrownBy(() -> start());
+    }
+
+    /** 对照：读取实例的凭据都有值时能启动，凭据检查只拒绝空白值。 */
+    @Test void startsWithNonBlankInstanceCredentials() {
+        assertThatNoException().isThrownBy(() -> start(
+                "spring.boot.admin.instance-auth.default-user-name=ops",
+                "spring.boot.admin.instance-auth.default-password=ops-secret"));
+    }
+
+    /**
+     * 打开延迟初始化时三项启动检查照样执行：它们没有被别的 bean 依赖，延迟后会静默跳过。
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"mars.monitor.admin.password=", "spring.boot.admin.instance-auth.default-password=",
+            "spring.boot.admin.notify.dingtalk.webhook-url="})
+    void startupChecksRunEvenWithLazyInitialization(String invalid) {
+        assertThatThrownBy(() -> start("spring.main.lazy-initialization=true",
+                "spring.boot.admin.instance-auth.default-user-name=ops",
+                "spring.boot.admin.instance-auth.default-password=ops-secret", invalid))
+                .rootCause()
+                .isInstanceOf(IllegalStateException.class);
     }
 
     /** 管理员口令为空时面板会把全部实例的管理端点放开，所以拒绝启动。 */
