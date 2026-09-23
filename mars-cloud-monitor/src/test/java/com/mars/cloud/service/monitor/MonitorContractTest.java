@@ -151,11 +151,14 @@ class MonitorContractTest {
     }
 
     /**
-     * 登录成功后令牌会更换、旧 Cookie 被删除；登录后的第一个请求（即使是不读令牌的数据接口）就要下发新 Cookie，
+     * 登录成功后令牌会更换：登录响应删除旧 Cookie，登录后的第一个请求（即使是不读令牌的数据接口）就要下发新 Cookie，
      * 否则前端接下来的修改请求没有令牌可带。Spring Security 只在读取令牌时写 Cookie，靠面板的令牌加载过滤器做到。
      */
     @Test void theFirstRequestAfterLoginIssuesAFreshTokenCookie() throws Exception {
-        MvcResult login = mvc.perform(login()).andExpect(status().is3xxRedirection()).andReturn();
+        MvcResult login = mvc.perform(login()).andExpect(status().is3xxRedirection())
+                .andExpect(cookie().maxAge("XSRF-TOKEN", 0))
+                .andExpect(cookie().value("XSRF-TOKEN", ""))
+                .andReturn();
         MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
         assertThat(session).isNotNull();
         Cookie token = mvc.perform(get("/applications").session(session).accept(MediaType.APPLICATION_JSON))
