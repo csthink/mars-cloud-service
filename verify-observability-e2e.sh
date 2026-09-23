@@ -152,8 +152,9 @@ check "授权决策服务的指标端点匿名被拒" "401" \
   "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
 check "授权决策服务的指标端点带凭据可读" "200" "$(command curl -s -o /dev/null -w '%{http_code}' \
   -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
+# 路径带示例服务的 context path：管理端点若回到业务端口，它在这个地址上返回 200。
 check "示例服务的业务端口上没有管理端点" "404" \
-  "$(security_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SAMPLE_PORT/actuator/health")"
+  "$(security_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SAMPLE_PORT/sample/actuator/health")"
 
 echo
 echo "④ 经网关发起一次跨三进程的请求"
