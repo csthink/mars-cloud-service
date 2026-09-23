@@ -1,5 +1,6 @@
 """Helpers for the observability acceptance: read structured logs, query the trace and log backends."""
 import base64
+import http.client
 import json
 import os
 import pathlib
@@ -214,16 +215,18 @@ def monitor_headers():
 def monitor_applications(monitor_base, headers):
     """Read the monitor's application list: (applications, None), or (None, reason) when the read failed.
 
-    Connection failures and error statuses are reported rather than raised, so callers polling the monitor
-    keep polling through a transient failure; urlopen raises HTTPError, a URLError, for 4xx and 5xx.
+    Failures are reported rather than raised, so callers polling the monitor keep polling through a transient
+    failure. urlopen raises HTTPError, a URLError, for 4xx and 5xx; a connection dropped while the response is read
+    raises http.client exceptions or OSError subclasses such as ConnectionResetError and TimeoutError; a body cut
+    short fails to parse as JSON.
     """
     try:
         status, body = fetch(f'{monitor_base}/applications', headers)
-    except urllib.error.URLError as error:
-        return None, f'读取监控面板失败：{error}'
-    if status != 200:
-        return None, f'读取监控面板返回 {status}'
-    return json.loads(body), None
+        if status != 200:
+            return None, f'读取监控面板返回 {status}'
+        return json.loads(body), None
+    except (OSError, http.client.HTTPException, ValueError) as error:
+        return None, f'读取监控面板失败：{error!r}'
 
 
 def command_applications(monitor_base, expected):
