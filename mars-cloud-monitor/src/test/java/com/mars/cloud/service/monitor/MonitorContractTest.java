@@ -151,10 +151,10 @@ class MonitorContractTest {
     }
 
     /**
-     * 登录成功后令牌会更换、旧 Cookie 被删除；之后的任何请求（包括不读令牌的数据接口）都要重新下发 Cookie，
+     * 登录成功后令牌会更换、旧 Cookie 被删除；登录后的第一个请求（即使是不读令牌的数据接口）就要下发新 Cookie，
      * 否则前端接下来的修改请求没有令牌可带。Spring Security 只在读取令牌时写 Cookie，靠面板的令牌加载过滤器做到。
      */
-    @Test void everyRequestAfterLoginIssuesAFreshTokenCookie() throws Exception {
+    @Test void theFirstRequestAfterLoginIssuesAFreshTokenCookie() throws Exception {
         MvcResult login = mvc.perform(login()).andExpect(status().is3xxRedirection()).andReturn();
         MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
         assertThat(session).isNotNull();
@@ -207,7 +207,6 @@ class MonitorContractTest {
         return post("/login").cookie(cookie).param("_csrf", token)
                 .param("username", "monitor-admin").param("password", "monitor-secret");
     }
-
 
     /**
      * 按面板前端异步请求的做法带 CSRF 令牌：先从登录页的响应取 XSRF-TOKEN Cookie，再把原值放进 X-XSRF-TOKEN 请求头。
