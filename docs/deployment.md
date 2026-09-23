@@ -155,12 +155,14 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `GET /actuator/health` | 匿名 | 聚合状态；匿名只返回状态，带凭据返回组件明细 |
 | `GET /actuator/health/readiness` | 匿名 | 就绪探针 |
 | `GET /actuator/health/liveness` | 匿名 | 存活探针 |
-| `GET /actuator/info` | Basic 认证（收窄为 `health`、`info` 时匿名） | 应用信息 |
+| `GET /actuator/info` | Basic 认证；暴露面收窄为 `health`、`info` 时由服务自己的安全链处理（见下文） | 应用信息 |
 | `GET /actuator/prometheus`、`/actuator/metrics` | Basic 认证 | 指标，带 `application` 标签 |
 | `/actuator/loggers`、`/actuator/threaddump`、`/actuator/heapdump` | Basic 认证 | 运行期排查 |
 
 认证账号来自 `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD`。缺凭据时，开发 profile 只暴露
 `health` 与 `info` 并告警，其他 profile 启动失败；服务没有接入 Spring Security 时（例如网关）只暴露 `health` 与 `info`。
+这时管理端点没有 Basic 认证链，`info` 由服务自己的安全链处理：网关没有安全链，匿名可读；sample 与 UPMS 要求 Bearer
+令牌；监控面板要求登录。没有认证链时显式配置的暴露清单也不能超出 `health` 与 `info`，否则非开发 profile 启动失败。
 暴露清单与这些规则见框架仓 observability starter 的说明，需要进一步收窄时设 `mars.observability.management.exposure`。
 业务端口上没有 `/actuator/*`。
 
