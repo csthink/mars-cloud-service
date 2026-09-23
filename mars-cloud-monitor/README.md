@@ -26,8 +26,8 @@
 curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http://127.0.0.1:8190/applications
 ```
 
-修改类请求（例如在面板里调整实例的日志级别）都要带 CSRF 令牌：令牌以 `XSRF-TOKEN` Cookie 下发，面板前端把它放进
-`X-XSRF-TOKEN` 请求头，浏览器里使用不需要额外操作。登录后只跳回本站地址。面板不接受实例经 `POST /instances` 自行登记，
+修改类请求（例如在面板里调整实例的日志级别、登出）都要带 CSRF 令牌：令牌以 `XSRF-TOKEN` Cookie 下发，面板前端把它放进
+`X-XSRF-TOKEN` 请求头或 `_csrf` 表单字段，浏览器里使用不需要额外操作。登录后只跳回本站地址。面板不接受实例经 `POST /instances` 自行登记，
 实例只经 Nacos 发现。
 
 ## 实例发现

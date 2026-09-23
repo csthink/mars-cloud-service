@@ -12,7 +12,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
@@ -94,9 +96,9 @@ class MonitorContractTest {
     }
 
     /**
-     * 面板的前端从 XSRF-TOKEN Cookie 读出令牌原值、放进 X-XSRF-TOKEN 请求头。令牌因此要以前端可读的 Cookie 下发，
-     * 服务端也要接受原值；Spring Security 默认要求的是经过掩码的令牌，前端发来的原值会被拒绝。
-     * 首页加载的 sba-settings.js 读取令牌，Cookie 随它的响应写出。
+     * 面板前端的两种提交方式都要能通过 CSRF 校验：异步请求把 XSRF-TOKEN Cookie 的原值放进 X-XSRF-TOKEN 请求头，
+     * 登出菜单是普通表单，把同一个原值放进 _csrf 表单字段、不带请求头。令牌因此要以前端可读的 Cookie 下发，
+     * 请求头与表单字段里的原值都要被接受。首页加载的 sba-settings.js 请求会下发 Cookie。
      */
     @Test void theUiCanSendTheTokenItReadsFromTheCookie() throws Exception {
         Cookie token = mvc.perform(get("/sba-settings.js").with(admin()))
@@ -105,9 +107,42 @@ class MonitorContractTest {
                 .andReturn().getResponse().getCookie("XSRF-TOKEN");
         assertThat(token).isNotNull();
         mvc.perform(post("/logout").cookie(token)).andExpect(status().isForbidden());
-        // CSRF 校验通过后登出照常处理；响应码由登出配置决定，这里只核对没有因为令牌被拒。
+        // 异步请求的做法；CSRF 校验通过后登出照常处理，响应码由登出配置决定，这里只核对没有因为令牌被拒。
         mvc.perform(post("/logout").cookie(token).header("X-XSRF-TOKEN", token.getValue()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
+    }
+
+    /** 登出菜单的做法：表单字段 _csrf 带 Cookie 原值、不带请求头，登出成功后回到登录页。 */
+    @Test void theLogoutFormOfTheUiEndsTheSession() throws Exception {
+        MockHttpSession session = (MockHttpSession) mvc.perform(login().param("redirectTo", "/applications"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn().getRequest().getSession(false);
+        assertThat(session).isNotNull();
+        Cookie token = mvc.perform(get("/sba-settings.js").session(session))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).isNotNull();
+        mvc.perform(post("/logout").session(session).cookie(token).param("_csrf", token.getValue())
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login?logout"));
+        mvc.perform(get("/applications").session(session).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * 登录成功后令牌会更换、旧 Cookie 被删除；之后的任何请求（包括不读令牌的数据接口）都要重新下发 Cookie，
+     * 否则前端接下来的修改请求没有令牌可带。Spring Security 只在读取令牌时写 Cookie，靠面板的令牌加载过滤器做到。
+     */
+    @Test void everyRequestAfterLoginIssuesAFreshTokenCookie() throws Exception {
+        MvcResult login = mvc.perform(login()).andExpect(status().is3xxRedirection()).andReturn();
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+        Cookie token = mvc.perform(get("/applications").session(session).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).isNotNull();
+        assertThat(token.getValue()).isNotEmpty();
     }
 
     /** 安全链没有配置「记住我」，登录页不显示这个选项。 */
@@ -138,12 +173,16 @@ class MonitorContractTest {
         return httpBasic("monitor-admin", "monitor-secret");
     }
 
+    /** 按登录页表单的做法提交：令牌放在 _csrf 表单字段里，值与登录页下发的 XSRF-TOKEN Cookie 相同。 */
     private MockHttpServletRequestBuilder login() throws Exception {
-        return post("/login").with(uiCsrfToken()).param("username", "monitor-admin").param("password", "monitor-secret");
+        Cookie token = mvc.perform(get("/login")).andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).as("登录页的响应应当下发 XSRF-TOKEN Cookie").isNotNull();
+        return post("/login").cookie(token).param("_csrf", token.getValue())
+                .param("username", "monitor-admin").param("password", "monitor-secret");
     }
 
     /**
-     * 按面板前端的做法带 CSRF 令牌：先从登录页的响应取 XSRF-TOKEN Cookie，再把原值放进 X-XSRF-TOKEN 请求头。
+     * 按面板前端异步请求的做法带 CSRF 令牌：先从登录页的响应取 XSRF-TOKEN Cookie，再把原值放进 X-XSRF-TOKEN 请求头。
      * 不用 Spring Security 测试工具的 csrf()：它会把共享上下文里的令牌存储换成会话存储，之后的请求不再下发 Cookie。
      */
     private RequestPostProcessor uiCsrfToken() throws Exception {

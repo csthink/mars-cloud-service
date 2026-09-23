@@ -17,8 +17,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -124,9 +126,11 @@ public class MonitorSecurityConfiguration {
                         .successHandler(new SameOriginRedirectSuccessHandler(contextPath + "/")))
                 .logout(logout -> logout.logoutUrl(contextPath + "/logout"))
                 .httpBasic(basic -> { })
-                // 面板的前端是单页应用：从 XSRF-TOKEN Cookie 读出令牌原值、放进 X-XSRF-TOKEN 请求头。
-                // spa() 让令牌以前端可读的 Cookie 下发、请求头里的原值可以通过校验；对实例的操作同样要带令牌。
-                .csrf(csrf -> csrf.spa())
+                // 面板前端从 XSRF-TOKEN Cookie 读出令牌原值：异步请求放进 X-XSRF-TOKEN 请求头，登出菜单放进 _csrf 表单字段。
+                // 所以令牌以前端可读的 Cookie 下发，请求头与表单字段都按原值校验；对实例的操作同样要带令牌。
+                // 不用 spa()：它把表单字段当作经过掩码的令牌解码，登出菜单提交的原值通不过校验。
+                .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .build();
     }
@@ -134,8 +138,8 @@ public class MonitorSecurityConfiguration {
     /**
      * 每个请求都加载一次 CSRF 令牌，让 Cookie 始终存在。
      *
-     * <p>Spring Security 只在有人读取令牌时才生成它并写 Cookie，而面板的页面只读令牌的请求头名；登录成功后令牌
-     * 会被更换、旧 Cookie 被删除，不主动加载的话前端之后发出的修改请求都会因为没有令牌被拒绝。
+     * <p>Spring Security 只在有人读取令牌值时才生成它并写 Cookie，而面板的页面只读令牌的参数名与请求头名；
+     * 登录成功后令牌会被更换、旧 Cookie 被删除，不主动加载的话前端之后发出的修改请求都会因为没有令牌被拒绝。
      */
     static final class CsrfCookieFilter extends OncePerRequestFilter {
 
