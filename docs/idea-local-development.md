@@ -1,6 +1,6 @@
 # 在 IntelliJ IDEA 中运行本地服务
 
-本文从安装框架依赖开始，运行当前已实现的 gateway、sample 和 UPMS，并检查服务健康与服务之间的调用。`mars-cloud-framework` 提供库和 starter，完成 Maven `install` 即可，不需要启动应用进程。正式 `auth-service` 尚未提供，本地认证使用项目自带的测试签发器；它不提供登录页面，也不能用于生产。
+本文从安装框架依赖开始，运行当前已实现的 gateway、sample 和 UPMS，并检查服务健康与服务之间的调用；监控面板 monitor 是可选的第四个启动项。`mars-cloud-framework` 提供库和 starter，完成 Maven `install` 即可，不需要启动应用进程。正式 `auth-service` 尚未提供，本地认证使用项目自带的测试签发器；它不提供登录页面，也不能用于生产。
 
 ## 1. 前置条件
 
@@ -124,6 +124,13 @@ done
 - `OTLP_TRACING_ENDPOINT`：调用链导出地址。使用项目中间件入口的默认编排时填 `http://127.0.0.1:24318/v1/traces`；
   留空则不导出，应用照常启动。
 
+要同时运行监控面板时，按同样方式复制 `mars-cloud-monitor/.env`，Nacos 连接与三个服务相同，另填：
+
+- `MONITOR_USERNAME` / `MONITOR_PASSWORD`：面板的登录账号。
+- `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD`：与三个服务相同，面板用它读取各实例的管理端点。
+
+这四项任一为空时面板拒绝启动。三个服务也要填写同一组管理端点凭据，否则面板只能读到它们的 `health` 与 `info`。面板的 profile 缺省为 `local`，它的 `.env` 不需要 `SPRING_PROFILES_ACTIVE`。访问方式见 [面板说明](../mars-cloud-monitor/README.md)。
+
 `.env` 已被 Git 忽略。账号密码只放本机文件或运行环境，不写进 `application-local.yml`、共享 IDEA 配置或版本库。
 
 ## 5. 启动本地测试签发器
@@ -163,34 +170,35 @@ BASH
 
 此签发器只用于本地测试。脚本不打印令牌正文，退出时清理自己创建的进程和临时凭据；不要把测试支持依赖改为应用的运行时依赖。
 
-## 6. 配置 IDEA 的三个 Run / Debug 启动项
+## 6. 配置 IDEA 的 Run / Debug 启动项
 
-在 service 的 IDEA 窗口，分别从三个入口类的 `main` 方法创建启动配置，再进入 **Run → Edit Configurations…** 检查下表。可使用 Spring Boot 配置；没有此配置类型时使用 Java **Application**。
+在 service 的 IDEA 窗口，分别从三个服务入口类的 `main` 方法创建启动配置（需要监控面板时，为它的入口类也建一个），然后进入 **Run → Edit Configurations…** 检查下表。可使用 Spring Boot 配置；没有此配置类型时使用 Java **Application**。
 
 | 配置 | Main class | Use classpath of module | 默认端口 |
 | --- | --- | --- | --- |
 | GatewayApplication | `com.mars.cloud.service.gateway.GatewayApplication` | `mars-cloud-gateway` | `8100` |
 | SampleApplication | `com.mars.cloud.service.sample.SampleApplication` | `mars-cloud-sample-service` | `8103` |
 | UpmsApplication | `com.mars.cloud.service.upms.UpmsApplication` | `mars-cloud-upms-service` | `8102` |
+| MonitorApplication（可选） | `com.mars.cloud.service.monitor.MonitorApplication` | `mars-cloud-monitor` | `8190` |
 
 每个启动项都配置：
 
 1. **JRE** 选择 JDK 25，**Working directory** 选择相应模块目录。
-2. **Environment variables** 中使用 **Browse for .env files and scripts**，选择该模块的 `.env` 的实际绝对路径。三个启动项分别选择三个文件，不选择仓库根的模板。
+2. **Environment variables** 中使用 **Browse for .env files and scripts**，选择该模块的 `.env` 的实际绝对路径。每个启动项选择各自模块的文件，不选择仓库根的模板。
 3. **Modify options → Add VM options**，填写下列 JVM 参数，不放到 Program arguments：
 
    ```text
    --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED
    ```
 
-4. 若使用 Spring Boot 配置，**Active profiles** 填 `local`；Java Application 由 `.env` 中的 `SPRING_PROFILES_ACTIVE=local` 激活。确认没有其他 VM options 或 Program arguments 把它覆盖为别的 profile。
+4. 若使用 Spring Boot 配置，**Active profiles** 填 `local`；Java Application 由 `.env` 中的 `SPRING_PROFILES_ACTIVE=local` 激活，面板不填时缺省即为 `local`。确认没有其他 VM options 或 Program arguments 把它覆盖为别的 profile。
 5. 点击 **Apply**，然后 **Run** 或 **Debug**。
 
 IDEA 2026.2 可直接加载 `.env`；菜单入口见 [JetBrains 环境变量与 JVM 参数说明](https://www.jetbrains.com/help/idea/program-arguments-and-environment-variables.html)。旧版本若没有文件选择入口，可在 Environment variables 表格中逐项填写相同变量。
 
 **Spring Boot 本身不会自动读取 `.env`。** Working directory 指向模块并不等于加载文件。`run-local.sh`、Maven 启动和 IDEA 直接运行 `main` 是不同入口，不能假定前一个入口设置的环境变量或 JVM 参数会传给后一个。
 
-建议先启动 gateway，再启动 sample、UPMS。gateway 可以先于 UPMS 启动；UPMS 注册完成后 gateway 自动发现，无需为此重启。
+建议先启动 gateway，再启动 sample、UPMS。gateway 可以先于 UPMS 启动；UPMS 注册完成后 gateway 自动发现，无需为此重启。面板在三个服务之后启动，它经 Nacos 发现已注册的实例，之后注册的实例也会自动出现。
 
 ## 7. 检查结果
 
@@ -203,6 +211,7 @@ IDEA 2026.2 可直接加载 `.env`；菜单入口见 [JetBrains 环境变量与 
 | gateway | `http://127.0.0.1:9100/actuator/health` | HTTP 200，`status` 为 `UP` |
 | sample | `http://127.0.0.1:9103/actuator/health` | HTTP 200，`status` 为 `UP` |
 | UPMS | `http://127.0.0.1:9102/actuator/health` | HTTP 200，`status` 为 `UP` |
+| 面板（已启动时） | `http://127.0.0.1:9190/actuator/health` | HTTP 200，`status` 为 `UP` |
 
 健康检查在各服务的管理端口（业务端口加 1000）上，路径不带服务的 context path。业务端口上没有 `/actuator/*`。
 
@@ -241,7 +250,7 @@ curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
 
 预期 HTTP 200，响应含 `success:true`，结果中有 `decision` 与 `decision_id`。该请求使用测试签发器生成的身份，要求 UPMS 已启动、注册到相同 Namespace，并加载本地演示权限数据。
 
-完整行为验证见 [sample 文档](../mars-cloud-sample-service/README.md)。自动验收脚本会自行启动应用进程；运行前先停止 IDEA 中对应的实例以释放端口。只完成上面四个健康检查，不能视为全部端到端验证通过。
+完整行为验证见 [sample 文档](../mars-cloud-sample-service/README.md)。自动验收脚本会自行启动应用进程；运行前先停止 IDEA 中对应的实例以释放端口。只完成上面的健康检查，不能视为全部端到端验证通过。自动验收、命令行检查与在浏览器里查看面板、Jaeger、Grafana 的完整步骤见 [本地运行与验收](local-acceptance.md)。
 
 ## 8. 常见问题
 
@@ -261,6 +270,6 @@ curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
 
 ## 9. 结束调试与再次启动
 
-在 IDEA 停止三个应用，再回测试签发器 Terminal 按回车，脚本会停止签发器并删除临时令牌。中间件可以保留供下一次调试使用；需要停止本项目中间件时，按 [中间件说明](../dev/README.md) 执行 `down`，它保留数据卷和状态。
+在 IDEA 停止三个应用（启动过面板时一并停止），再回测试签发器 Terminal 按回车，脚本会停止签发器并删除临时令牌。中间件可以保留供下一次调试使用；需要停止本项目中间件时，按 [中间件说明](../dev/README.md) 执行 `down`，它保留数据卷和状态。
 
 下次调试时，确认中间件可用，重新启动测试签发器，更新 sample 与 UPMS 的两个地址，再启动三个应用。framework 未变化时不必重复安装依赖；变化后按第 3 节重新安装。
