@@ -14,7 +14,7 @@
 set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=../scripts/security-test-runtime.sh
+# shellcheck source=SCRIPTDIR/../scripts/security-test-runtime.sh
 . "$MODULE_DIR/../scripts/security-test-runtime.sh"
 GATEWAY_JAR="$MODULE_DIR/target/mars-cloud-gateway.jar"
 UPMS_JAR="$MODULE_DIR/../mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
@@ -77,7 +77,8 @@ fi
 if [ -f "$ENV_FILE" ]; then
   echo "加载 $ENV_FILE"
   set -a
-  # shellcheck disable=SC1091
+  # 环境文件是本机数据，不是要检查的脚本。
+  # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 fi

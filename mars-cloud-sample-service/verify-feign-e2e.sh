@@ -8,7 +8,7 @@
 set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=../scripts/security-test-runtime.sh
+# shellcheck source=SCRIPTDIR/../scripts/security-test-runtime.sh
 . "$MODULE_DIR/../scripts/security-test-runtime.sh"
 SERVICE_DIR="$(cd "$MODULE_DIR/.." && pwd)"
 SAMPLE_JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
@@ -69,7 +69,8 @@ fi
 if [ -f "$ENV_FILE" ]; then
   echo "加载 $ENV_FILE"
   set -a
-  # shellcheck disable=SC1091
+  # 环境文件是本机数据，不是要检查的脚本。
+  # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 fi
@@ -79,7 +80,6 @@ UPMS_PORT="${UPMS_PORT:-8202}"
 SAMPLE_MANAGEMENT_PORT="${SAMPLE_MANAGEMENT_PORT:-$((SAMPLE_PORT + 1000))}"
 UPMS_MANAGEMENT_PORT="${UPMS_MANAGEMENT_PORT:-$((UPMS_PORT + 1000))}"
 SAMPLE="http://127.0.0.1:${SAMPLE_PORT}/sample"
-UPMS="http://127.0.0.1:${UPMS_PORT}/upms"
 SAMPLE_MANAGEMENT="http://127.0.0.1:${SAMPLE_MANAGEMENT_PORT}"
 UPMS_MANAGEMENT="http://127.0.0.1:${UPMS_MANAGEMENT_PORT}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-local}"
@@ -96,14 +96,13 @@ for probe in "$SAMPLE_MANAGEMENT/actuator/health" "$UPMS_MANAGEMENT/actuator/hea
 done
 
 # 拒绝任何已占用端口，避免误验已有进程。
-python3 - "$SAMPLE_PORT" "$UPMS_PORT" "$SAMPLE_MANAGEMENT_PORT" "$UPMS_MANAGEMENT_PORT" <<'PY'
+python3 - "$SAMPLE_PORT" "$UPMS_PORT" "$SAMPLE_MANAGEMENT_PORT" "$UPMS_MANAGEMENT_PORT" <<'PY' || exit 2
 import socket, sys
 for port in sys.argv[1:]:
     with socket.socket() as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(("127.0.0.1", int(port)))
 PY
-[ "$?" -eq 0 ] || exit 2
 
 cleanup() {
   for pid in "${SAMPLE_PID:-}" "${UPMS_PID:-}" "${PROXY_PID:-}"; do

@@ -23,7 +23,7 @@ set -uo pipefail
 
 # ── 供其它脚本 source 的复用接口 ───────────────────────────────
 # 设置 SCANNER_NO_MAIN=1 再 source 本文件，即可只取下面这些函数、不执行主流程。
-# 私有仓的完整版与 pre-commit hook 都靠这个接口复用**同一份**规则，
+# 本仓的 pre-commit hook 与 CI 都直接执行本文件；需要复用同一份规则的脚本走这个接口，
 # 避免「多处各写一遍、改一处漏一处」。
 
 scanner_violations=0
@@ -101,7 +101,8 @@ scanner_run_generic_rules() {
 
   # 2. 本机绝对路径与家目录引用
   scanner_pattern "本机路径" '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/'
-  scanner_pattern "家目录" '~/\.m2|~/\.ssh'
+  # 方括号里的 ~ 是字面字符：要找的是文件里写出来的 ~/ 路径，不是让 shell 展开家目录。
+  scanner_pattern "家目录" '[~]/\.m2|[~]/\.ssh'
 
   # 3. 内网地址段（RFC1918）
   scanner_pattern "内网地址" 'https?://(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)'
@@ -134,7 +135,9 @@ EOF
 
 # ── 主流程（被 source 时跳过）────────────────────────────────
 if [ "${SCANNER_NO_MAIN:-0}" = "1" ]; then
-  return 0 2>/dev/null || exit 0
+  # 被 source 时回到调用方，只留下上面的函数；被直接执行时没有调用方可回，直接退出。
+  (return 0 2>/dev/null) && return 0
+  exit 0
 fi
 
 TARGET="${1:-.}"

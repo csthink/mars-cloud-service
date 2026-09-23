@@ -8,7 +8,7 @@
 set -uo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=../scripts/security-test-runtime.sh
+# shellcheck source=SCRIPTDIR/../scripts/security-test-runtime.sh
 . "$MODULE_DIR/../scripts/security-test-runtime.sh"
 JAR="$MODULE_DIR/target/mars-cloud-sample-service.jar"
 LOG="$(mktemp -t sample-e2e)"
@@ -49,7 +49,8 @@ fi
 if [ -f "$ENV_FILE" ]; then
   echo "加载 $ENV_FILE"
   set -a
-  # shellcheck disable=SC1091
+  # 环境文件是本机数据，不是要检查的脚本。
+  # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 fi
@@ -73,14 +74,13 @@ if security_curl -fsS "$MANAGEMENT/actuator/health" >/dev/null 2>&1; then
 fi
 
 # 拒绝任何已占用端口，避免误验已有进程。
-python3 - "$PORT" "$MANAGEMENT_PORT" <<'PY'
+python3 - "$PORT" "$MANAGEMENT_PORT" <<'PY' || exit 2
 import socket, sys
 for port in sys.argv[1:]:
     with socket.socket() as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(("127.0.0.1", int(port)))
 PY
-[ "$?" -eq 0 ] || exit 2
 
 cleanup() {
   if [ -n "${PID:-}" ] && kill -0 "$PID" 2>/dev/null; then

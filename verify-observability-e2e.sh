@@ -11,12 +11,13 @@
 set -uo pipefail
 
 SERVICE_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=scripts/security-test-runtime.sh
+# shellcheck source=SCRIPTDIR/scripts/security-test-runtime.sh
 . "$SERVICE_DIR/scripts/security-test-runtime.sh"
 
 ENV_FILE="${E2E_ENV_FILE:-$SERVICE_DIR/mars-cloud-sample-service/.env}"
 [ -f "$ENV_FILE" ] || { echo "找不到环境文件 $ENV_FILE" >&2; exit 2; }
 set -a
+# 环境文件是本机数据，不是要检查的脚本。
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a

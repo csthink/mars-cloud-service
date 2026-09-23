@@ -2,6 +2,7 @@
 # Full resource server acceptance against real packaged sample and UPMS processes.
 set -euo pipefail
 SERVICE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/scripts/security-test-runtime.sh
 . "$SERVICE_DIR/scripts/security-test-runtime.sh"
 ENV_FILE="${E2E_ENV_FILE:-$SERVICE_DIR/mars-cloud-sample-service/.env}"
 if [ -n "${E2E_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ]; then
@@ -10,6 +11,8 @@ if [ -n "${E2E_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ]; then
 fi
 if [ -f "$ENV_FILE" ]; then
   set -a
+  # 环境文件是本机数据，不是要检查的脚本。
+  # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 fi
