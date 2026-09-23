@@ -207,10 +207,11 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 - 不设置时是 `127.0.0.1`：本机开发与验收只监听回环地址，同一台机器上的服务互相可达。
 - 部署时必须设置为实例在私网里能被其他实例访问的 IPv4 地址。填通配地址（`0.0.0.0`、`::`）或主机名时框架不推导：
   管理端口绑定全部网卡，注册地址由 Spring Cloud Alibaba 选第一块非回环网卡，不一定是这个实例的私网地址。
-- 填 IPv6 地址时只推导管理端口的地址，注册地址要另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP`。
+- 不填 IPv6 地址：Spring Cloud 拼实例地址时不给 IPv6 地址加方括号，以 IPv6 地址注册拼出的实例地址无效。
 - 在容器里运行时填容器在私网里的地址，缺省的回环地址在容器外不可达。
 - 注册地址需要与绑定地址不同时，另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP` 与
   `SPRING_CLOUD_NACOS_DISCOVERY_PORT`，显式配置优先于推导。监控面板按注册地址与元数据里的 `management.port` 读取管理端点。
+  `SPRING_CLOUD_NACOS_DISCOVERY_IP` 设为空值也算显式配置，这时注册地址由 Spring Cloud Alibaba 选网卡。
 
 端口一律可用 `SERVER_PORT` 覆盖。**服务间调用绕过网关**，因此每个服务都要自己完成鉴权，
 网关只是第一道——部署时不要假设「流量过了网关就一定是可信的」。
