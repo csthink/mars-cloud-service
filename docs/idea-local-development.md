@@ -191,7 +191,7 @@ BASH
    --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED
    ```
 
-4. 若使用 Spring Boot 配置，**Active profiles** 填 `local`；Java Application 由 `.env` 中的 `SPRING_PROFILES_ACTIVE=local` 激活，面板不填时缺省即为 `local`。确认没有其他 VM options 或 Program arguments 把它覆盖为别的 profile。
+4. 若使用 Spring Boot 配置，**Active profiles** 填 `local`；Java Application 由 `.env` 中的 `SPRING_PROFILES_ACTIVE=local` 激活；四个部署物不填这一项时缺省也是 `local`。确认没有其他 VM options 或 Program arguments 把它覆盖为别的 profile。
 5. 点击 **Apply**，然后 **Run** 或 **Debug**。
 
 IDEA 2026.2 可直接加载 `.env`；菜单入口见 [JetBrains 环境变量与 JVM 参数说明](https://www.jetbrains.com/help/idea/program-arguments-and-environment-variables.html)。旧版本若没有文件选择入口，可在 Environment variables 表格中逐项填写相同变量。
