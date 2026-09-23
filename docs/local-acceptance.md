@@ -23,7 +23,7 @@
 | `OTLP_TRACING_ENDPOINT` | 四份都写，取值相同 | 默认编排为 `http://127.0.0.1:24318/v1/traces` |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | `mars-cloud-monitor/.env` 与 `mars-cloud-sample-service/.env`，取值相同 | 面板的登录账号。面板读自己那一份，任一为空时拒绝启动，见 [面板说明](../mars-cloud-monitor/README.md)；可观测性验收读 sample 那一份 |
 | `JAEGER_QUERY`、`LOKI` | `mars-cloud-sample-service/.env`，模板里是注释，去掉注释 | 默认编排为 `http://127.0.0.1:36686` 与 `http://127.0.0.1:23100`，只有可观测性验收读取 |
-| `MARS_SECURITY_ISSUER_URI` / `MARS_SECURITY_JWK_SET_URI` | `mars-cloud-sample-service/.env` 与 `mars-cloud-upms-service/.env` | 测试签发器的地址，取自 IDEA 指南第 5 节的输出，必须非空；为空时这两个服务启动失败 |
+| `MARS_SECURITY_ISSUER_URI` / `MARS_SECURITY_JWK_SET_URI` | `mars-cloud-sample-service/.env` 与 `mars-cloud-upms-service/.env` | 测试签发器的地址，取自 IDEA 指南第 5 节的输出。`MARS_SECURITY_ISSUER_URI` 必填，须是 HTTPS 地址，`local` profile 下也可以是回环 HTTP 地址，为空或不符合时这两个服务启动失败；`MARS_SECURITY_JWK_SET_URI` 可选，本地按签发器输出一并填写 |
 
 ## 2. 自动验收
 
@@ -69,7 +69,7 @@ done
 
 四个管理端口 9102、9103、9100、9190 的 `/actuator/health` 都返回 200 即启动完成。在 IntelliJ IDEA 里启动时按 IDEA 指南第 6 节配置启动项，面板是其中可选的一项。
 
-sample 与 UPMS 启动时要求 `MARS_SECURITY_ISSUER_URI`、`MARS_SECURITY_JWK_SET_URI` 非空，但不连接签发器：公钥在第一次校验令牌时才获取。所以签发器没有运行时，只要两个地址非空，服务照常启动，业务请求一律得到 `401`；健康检查与第 4 节的检查不受影响。需要带令牌的业务请求时，按 IDEA 指南第 5 节启动测试签发器，并把输出的地址写进这两份 `.env` 后重启这两个服务。
+sample 与 UPMS 启动时只校验签发器地址，要求见第 1 节。两项都按签发器输出填写时，启动不连接签发器，公钥在第一次校验令牌时才获取；所以签发器没有运行时服务照常启动，业务请求一律得到 `401`；健康检查与第 4 节的检查不受影响。需要带令牌的业务请求时，按 IDEA 指南第 5 节启动测试签发器，并把输出的地址写进这两份 `.env` 后重启这两个服务。
 
 ## 4. 命令行检查
 
@@ -99,7 +99,7 @@ sample 与 UPMS 启动时要求 `MARS_SECURITY_ISSUER_URI`、`MARS_SECURITY_JWK_
 2. 在左侧「Fields」勾选 `service_name`，每行前面显示服务名。
 3. 单击日志行只是切换选中。点行首的 `⋮`，选「Show log details」，详情在该行下方展开，`traceId` 的链接在详情里。
 
-可观测性验收推送的日志带三个标签：`job=verify-observability-e2e`、本次运行的 `run_id` 与 `service_name`。中间件的 `up` 与 `verify` 另推送探测日志，标签是 `app=local-verification`。手工启动的部署物只把日志写到第 3 节的日志文件，不进 Loki。
+可观测性验收推送的日志带三个标签：`job=verify-observability-e2e`、本次运行的 `run_id` 与 `service_name`。中间件的 `up` 与 `verify` 在新建一轮验证数据时另推送一条探测日志，标签是 `app=local-verification` 与该轮的 `run`。手工启动的部署物只把日志写到第 3 节的日志文件，不进 Loki。
 
 ## 6. 结束
 
@@ -107,7 +107,7 @@ sample 与 UPMS 启动时要求 `MARS_SECURITY_ISSUER_URI`、`MARS_SECURITY_JWK_
 
 ```bash
 pids=$(for p in 9100 9102 9103 9190; do lsof -tiTCP:$p -sTCP:LISTEN; done)
-[ -n "$pids" ] && kill $pids
+[ -n "$pids" ] && printf '%s\n' "$pids" | xargs kill
 ```
 
 部署物收到停止信号后先从 Nacos 注销，再等 10 秒（`spring.cloud.nacos.discovery.graceful-shutdown-wait-time` 的默认值）让调用方刷新实例列表，然后优雅停机并退出。面板若还有浏览器页面开着，页面保持的事件流连接要等到优雅停机的 30 秒超时才断开，面板因此还要再等约 30 秒；先关掉面板页面可以避免。
@@ -121,6 +121,6 @@ IDEA 启动的实例在 IDEA 里停止。中间件可以保留供下次使用；
 | 面板里 gateway、UPMS、sample 的地址与面板自己的地址不同 | 实例地址来自 Nacos 注册信息。面板的业务端口、管理端口与注册地址都取 `SERVER_ADDRESS`（默认 `127.0.0.1`）；另外三个部署物注册的是 Spring Cloud Alibaba 自动选取的网卡地址 |
 | 业务请求 `401`，健康检查正常 | 测试签发器没有运行，或令牌已超过 5 分钟有效期，见 IDEA 指南第 5 节 |
 | 自动验收报端口被占用 | 先停掉 IDEA 或手工启动的实例，见第 6 节 |
-| 可观测性验收报「监控面板口令必须给出」 | `mars-cloud-sample-service/.env` 没有写面板账号，或其中 `MONITOR_PASSWORD` 为空，见第 1 节 |
+| 可观测性验收报「追踪后端查询地址必须给出」「监控面板账号必须给出」或「监控面板口令必须给出」 | `mars-cloud-sample-service/.env` 缺少第 1 节列出的变量，或其值为空（`JAEGER_QUERY`、`LOKI` 在模板里是注释） |
 | 面板拒绝启动 | `MONITOR_USERNAME`、`MONITOR_PASSWORD`、`MARS_MANAGEMENT_USERNAME`、`MARS_MANAGEMENT_PASSWORD` 任一为空，见 [面板说明](../mars-cloud-monitor/README.md) |
 | Grafana 里一屏只看到一条日志 | JSON 美化显示把每条日志展开成多行，见第 5 节第 1 条 |
