@@ -1,5 +1,6 @@
 package com.mars.cloud.service.monitor;
 
+import com.jayway.jsonpath.JsonPath;
 import de.codecentric.boot.admin.server.cloud.discovery.InstanceDiscoveryListener;
 import de.codecentric.boot.admin.server.notify.DingTalkNotifier;
 import de.codecentric.boot.admin.server.notify.LoggingNotifier;
@@ -11,8 +12,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -21,6 +22,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
@@ -46,6 +49,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles({"local", "test"})
 class MonitorContractTest {
+
+    /** 登录页模板把请求里的 CSRF 令牌以 JSON 对象内联进脚本：{@code var csrf = {...};}。 */
+    private static final Pattern RENDERED_CSRF = Pattern.compile("var csrf = (\\{.*?\\});");
 
     @Autowired MockMvc mvc;
     @Autowired ApplicationContext context;
@@ -112,6 +118,20 @@ class MonitorContractTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
     }
 
+    /**
+     * 令牌必须与 Cookie 一致：请求头或表单字段换成别的值都被拒绝。对照请求带一致的请求头，通过 CSRF 校验；
+     * 用登出请求核对，因为模拟请求走不到面板转发实例请求的那一段，校验规则对所有修改请求相同。
+     */
+    @Test void aTokenThatDiffersFromTheCookieIsRejected() throws Exception {
+        Cookie token = mvc.perform(get("/login")).andReturn().getResponse().getCookie("XSRF-TOKEN");
+        assertThat(token).as("登录页的响应应当下发 XSRF-TOKEN Cookie").isNotNull();
+        String other = "other-" + token.getValue();
+        mvc.perform(post("/logout").cookie(token).header("X-XSRF-TOKEN", other)).andExpect(status().isForbidden());
+        mvc.perform(post("/logout").cookie(token).param("_csrf", other)).andExpect(status().isForbidden());
+        mvc.perform(post("/logout").cookie(token).header("X-XSRF-TOKEN", token.getValue()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
+    }
+
     /** 登出菜单的做法：表单字段 _csrf 带 Cookie 原值、不带请求头，登出成功后回到登录页。 */
     @Test void theLogoutFormOfTheUiEndsTheSession() throws Exception {
         MockHttpSession session = (MockHttpSession) mvc.perform(login().param("redirectTo", "/applications"))
@@ -173,13 +193,21 @@ class MonitorContractTest {
         return httpBasic("monitor-admin", "monitor-secret");
     }
 
-    /** 按登录页表单的做法提交：令牌放在 _csrf 表单字段里，值与登录页下发的 XSRF-TOKEN Cookie 相同。 */
+    /**
+     * 按登录页表单的做法提交：令牌取自登录页渲染进页面的 csrf 对象，放在 _csrf 表单字段里，
+     * 同时带上登录页下发的 XSRF-TOKEN Cookie。
+     */
     private MockHttpServletRequestBuilder login() throws Exception {
-        Cookie token = mvc.perform(get("/login")).andReturn().getResponse().getCookie("XSRF-TOKEN");
-        assertThat(token).as("登录页的响应应当下发 XSRF-TOKEN Cookie").isNotNull();
-        return post("/login").cookie(token).param("_csrf", token.getValue())
+        MvcResult page = mvc.perform(get("/login")).andExpect(status().isOk()).andReturn();
+        Cookie cookie = page.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(cookie).as("登录页的响应应当下发 XSRF-TOKEN Cookie").isNotNull();
+        Matcher rendered = RENDERED_CSRF.matcher(page.getResponse().getContentAsString());
+        assertThat(rendered.find()).as("登录页应当把 csrf 对象渲染进页面").isTrue();
+        String token = JsonPath.read(rendered.group(1), "$.token");
+        return post("/login").cookie(cookie).param("_csrf", token)
                 .param("username", "monitor-admin").param("password", "monitor-secret");
     }
+
 
     /**
      * 按面板前端异步请求的做法带 CSRF 令牌：先从登录页的响应取 XSRF-TOKEN Cookie，再把原值放进 X-XSRF-TOKEN 请求头。

@@ -2,6 +2,8 @@ package com.mars.cloud.service.monitor;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -46,18 +48,35 @@ class MonitorStartupFailureTest {
                 "spring.boot.admin.instance-auth.default-password=ops-secret"));
     }
 
+    /** 对照：打开延迟初始化、配置有效时能启动，下一条的失败因此只能来自各自改动的那一项。 */
+    @Test void startsWithLazyInitializationAndAValidConfiguration() {
+        assertThatNoException().isThrownBy(() -> start("spring.main.lazy-initialization=true",
+                "spring.boot.admin.instance-auth.default-user-name=ops",
+                "spring.boot.admin.instance-auth.default-password=ops-secret"));
+    }
+
     /**
      * 打开延迟初始化时三项启动检查照样执行：它们没有被别的 bean 依赖，延迟后会静默跳过。
+     * 每条都核对失败消息，一个无关的启动失败不能让用例通过。
      */
     @ParameterizedTest
-    @ValueSource(strings = {"mars.monitor.admin.password=", "spring.boot.admin.instance-auth.default-password=",
-            "spring.boot.admin.notify.dingtalk.webhook-url="})
-    void startupChecksRunEvenWithLazyInitialization(String invalid) {
+    @MethodSource("startupChecks")
+    void startupChecksRunEvenWithLazyInitialization(String invalid, String message) {
         assertThatThrownBy(() -> start("spring.main.lazy-initialization=true",
                 "spring.boot.admin.instance-auth.default-user-name=ops",
                 "spring.boot.admin.instance-auth.default-password=ops-secret", invalid))
                 .rootCause()
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(message);
+    }
+
+    static Stream<Arguments> startupChecks() {
+        return Stream.of(
+                Arguments.of("mars.monitor.admin.password=", "mars.monitor.admin.username 与 password 都不能为空"),
+                Arguments.of("spring.boot.admin.instance-auth.default-password=",
+                        MonitorSecurityConfiguration.INSTANCE_CREDENTIALS_MISSING),
+                Arguments.of("spring.boot.admin.notify.dingtalk.webhook-url=",
+                        MonitorNotificationConfiguration.DINGTALK_UNSUPPORTED));
     }
 
     /** 管理员口令为空时面板会把全部实例的管理端点放开，所以拒绝启动。 */
