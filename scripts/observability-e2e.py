@@ -259,6 +259,45 @@ def command_instance_ids(monitor_base, name):
     return 0
 
 
+def instance_hosts(instance):
+    """Host names of the service, management and health URLs an instance registered with the monitor."""
+    registration = instance.get('registration') or {}
+    urls = [registration.get(key) for key in ('serviceUrl', 'managementUrl', 'healthUrl')]
+    return {urllib.parse.urlsplit(url).hostname for url in urls if url}
+
+
+def command_registered_host(monitor_base, host, names):
+    """Every instance of each named application must be UP and registered under the given host.
+
+    Polls for up to a minute: an instance that was just replaced stays listed until the monitor's next discovery
+    refresh, and a new instance is listed as soon as it registers.
+    """
+    headers = monitor_headers()
+    problems = []
+    for _ in range(20):
+        try:
+            status, body = fetch(f'{monitor_base}/applications', headers)
+        except urllib.error.URLError as error:
+            print(f'读取监控面板失败：{error}', file=sys.stderr)
+            return 1
+        problems = [] if status == 200 else [f'读取监控面板返回 {status}']
+        applications = {item.get('name'): item for item in json.loads(body)} if status == 200 else {}
+        for name in names:
+            instances = (applications.get(name) or {}).get('instances', [])
+            if not instances:
+                problems.append(f'{name} 没有实例')
+            for instance in instances:
+                state = (instance.get('statusInfo') or {}).get('status')
+                hosts = instance_hosts(instance)
+                if state != 'UP' or hosts != {host}:
+                    problems.append(f'{name} 的实例状态 {state}，注册地址 {sorted(hosts)}')
+        if not problems:
+            return 0
+        time.sleep(3)
+    print('；'.join(problems) + f'；期望全部为 UP 且注册地址为 {host}', file=sys.stderr)
+    return 1
+
+
 def outbound_address():
     """The IPv4 address this host uses for outbound traffic; connecting a UDP socket sends no packet."""
     try:
@@ -296,6 +335,27 @@ def command_loopback_only(ports):
     return 0
 
 
+def command_outbound_address():
+    """Print the host's non-loopback address, the stand-in for a private address in this acceptance."""
+    address = outbound_address()
+    if address is None:
+        print('本机没有非回环地址', file=sys.stderr)
+        return 1
+    print(address)
+    return 0
+
+
+def command_listens_only_on(address, ports):
+    """Every port must accept connections on the given address and refuse them on the loopback address."""
+    closed = [port for port in ports if not reachable(address, int(port))]
+    open_on_loopback = [port for port in ports if reachable('127.0.0.1', int(port))]
+    if closed:
+        print(f'端口 {", ".join(closed)} 在 {address} 上连不上', file=sys.stderr)
+    if open_on_loopback:
+        print(f'端口 {", ".join(open_on_loopback)} 在回环地址上可以连接', file=sys.stderr)
+    return 1 if closed or open_on_loopback else 0
+
+
 COMMANDS = {
     'trace-id': lambda args: command_trace_id(args),
     'log-fields': lambda args: command_log_fields(args[0], args[1:]),
@@ -306,6 +366,9 @@ COMMANDS = {
     'applications': lambda args: command_applications(args[0], args[1:]),
     'instance-ids': lambda args: command_instance_ids(args[0], args[1]),
     'loopback-only': lambda args: command_loopback_only(args),
+    'registered-host': lambda args: command_registered_host(args[0], args[1], args[2:]),
+    'outbound-address': lambda args: command_outbound_address(),
+    'listens-only-on': lambda args: command_listens_only_on(args[0], args[1:]),
 }
 
 if __name__ == '__main__':

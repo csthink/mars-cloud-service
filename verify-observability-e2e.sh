@@ -3,7 +3,8 @@
 # 可观测性的真进程验收：一次经网关到示例服务再到授权决策服务的请求，
 # 在追踪后端是一条链、三个进程各有 span，三个进程的日志带同一个链路标识，
 # 日志按该标识能查回三个服务，Grafana 能从日志行打开这条链，
-# 监控面板能看到全部实例并在实例下线时写出日志通知。
+# 监控面板能看到全部实例并在实例下线时写出日志通知；
+# 四个部署物只监听回环地址并注册回环地址，给出私网地址时按它绑定与注册。
 #
 # 前置：本机中间件已启动（追踪后端、日志后端、注册中心）；四个模块已 clean package；
 # 环境文件给出注册中心连接、端口与管理端点凭据；本机有 docker（临时 Grafana 用）。
@@ -21,6 +22,9 @@ set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a
+# 前九步核对缺省的监听与注册地址，环境文件里即使写了这三项也不传给部署物；
+# 按给出的地址绑定与注册由第十步单独核对。
+unset SERVER_ADDRESS MANAGEMENT_SERVER_ADDRESS SPRING_CLOUD_NACOS_DISCOVERY_IP
 
 GATEWAY_PORT="${GATEWAY_PORT:-8100}"
 UPMS_PORT="${UPMS_PORT:-8102}"
@@ -102,10 +106,10 @@ if ! docker run -d --rm --name "$GRAFANA_CONTAINER" -p 127.0.0.1::3000 \
 fi
 ok "临时 Grafana 已启动"
 
-wait_health() {
-  local port="$1" limit="${2:-90}" waited=0
+wait_health() { # 管理端口 [秒数] [地址]
+  local port="$1" limit="${2:-90}" host="${3:-127.0.0.1}" waited=0
   while [ "$waited" -lt "$limit" ]; do
-    command curl -fsS "http://127.0.0.1:$port/actuator/health" >/dev/null 2>&1 && { echo "$waited"; return 0; }
+    command curl -fsS "http://$host:$port/actuator/health" >/dev/null 2>&1 && { echo "$waited"; return 0; }
     sleep 1
     waited=$((waited + 1))
   done
@@ -262,11 +266,19 @@ SAMPLE_INSTANCE_ID="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" instan
   mars-cloud-sample-service | head -1)"
 check "经面板读取示例服务的指标端点" "200" "$(monitor_curl -s -o /dev/null -w '%{http_code}' \
   -H 'Accept: application/json' "$MONITOR/instances/$SAMPLE_INSTANCE_ID/actuator/metrics")"
-# 面板读得到全部实例的管理端点，它的两个端口只绑 SERVER_ADDRESS（本机为回环地址）。
-if python3 "$SERVICE_DIR/scripts/observability-e2e.py" loopback-only "$MONITOR_PORT" "$MONITOR_MANAGEMENT_PORT"; then
-  ok "面板的业务端口与管理端口从本机的非回环地址连不上"
+# 没有给出 SERVER_ADDRESS 时，四个部署物的业务端口与管理端口都只绑回环地址，注册到 Nacos 的也是它。
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" loopback-only \
+  "$GATEWAY_PORT" "$GATEWAY_MANAGEMENT_PORT" "$UPMS_PORT" "$UPMS_MANAGEMENT_PORT" \
+  "$SAMPLE_PORT" "$SAMPLE_MANAGEMENT_PORT" "$MONITOR_PORT" "$MONITOR_MANAGEMENT_PORT"; then
+  ok "四个部署物的业务端口与管理端口从本机的非回环地址连不上"
 else
-  bad "面板的端口在非回环地址上可达"
+  bad "有部署物的端口在非回环地址上可达"
+fi
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" registered-host "$MONITOR" 127.0.0.1 \
+  mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service mars-cloud-monitor; then
+  ok "四个应用的实例都按回环地址注册，面板按它读取管理端点"
+else
+  bad "有实例的注册地址不是回环地址"
 fi
 
 echo
@@ -298,6 +310,37 @@ for _ in $(seq 1 60); do
 done
 check "面板的日志通知记录了示例服务下线（状态变化或移除）" "1" "$notified"
 [ -z "$notification" ] || echo "       通知：$notification"
+
+echo
+echo "⑩ 给出私网地址时按它绑定与注册"
+# 用本机的非回环地址代替部署时的私网地址重启示例服务：两个端口只在这个地址上可连、在回环地址上连不上，
+# 面板里它的注册地址也是这个地址。下线的旧实例在面板下一次发现刷新时移除，检查会等到那时。
+PRIVATE_ADDRESS="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" outbound-address)"
+if [ -z "$PRIVATE_ADDRESS" ]; then
+  bad "本机没有非回环地址，无法核对按给出的地址绑定"
+else
+  SERVER_ADDRESS="$PRIVATE_ADDRESS" SERVER_PORT="$SAMPLE_PORT" \
+    java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" > "$LOG_DIR/sample-private-address.log" 2>&1 &
+  SAMPLE_PID=$!
+  if elapsed=$(wait_health "$SAMPLE_MANAGEMENT_PORT" 90 "$PRIVATE_ADDRESS"); then
+    ok "示例服务按给出的地址就绪（${elapsed}s）"
+    if python3 "$SERVICE_DIR/scripts/observability-e2e.py" listens-only-on "$PRIVATE_ADDRESS" \
+      "$SAMPLE_PORT" "$SAMPLE_MANAGEMENT_PORT"; then
+      ok "示例服务的业务端口与管理端口只在给出的地址上可连"
+    else
+      bad "示例服务的端口没有只绑定给出的地址"
+    fi
+    if python3 "$SERVICE_DIR/scripts/observability-e2e.py" registered-host "$MONITOR" "$PRIVATE_ADDRESS" \
+      mars-cloud-sample-service; then
+      ok "示例服务按给出的地址注册，面板读到它且为 UP"
+    else
+      bad "示例服务的注册地址不是给出的地址"
+    fi
+  else
+    bad "示例服务按给出的地址未在 90 秒内就绪"
+    tail -20 "$LOG_DIR/sample-private-address.log"
+  fi
+fi
 
 echo
 echo "──────────────────────────────"
