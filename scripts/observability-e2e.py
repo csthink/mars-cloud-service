@@ -88,9 +88,15 @@ def command_trace(query_base, trace_id, expected):
     """The trace backend must return one trace whose processes cover every expected service."""
     if not require_trace_id(trace_id):
         return 1
-    for attempt in range(10):
+    # 导出器每 5 秒送一批，追踪后端收到之前按链路标识查询得到 404，这时继续重试。
+    for attempt in range(15):
         try:
             status, body = fetch(f'{query_base}/api/traces/{trace_id}')
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                print(f'查询追踪后端失败：{error}', file=sys.stderr)
+                return 1
+            status, body = 404, b''
         except urllib.error.URLError as error:
             print(f'查询追踪后端失败：{error}', file=sys.stderr)
             return 1

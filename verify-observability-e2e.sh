@@ -31,6 +31,14 @@ GATEWAY_MANAGEMENT_PORT="${GATEWAY_MANAGEMENT_PORT:-$((GATEWAY_PORT + 1000))}"
 UPMS_MANAGEMENT_PORT="${UPMS_MANAGEMENT_PORT:-$((UPMS_PORT + 1000))}"
 SAMPLE_MANAGEMENT_PORT="${SAMPLE_MANAGEMENT_PORT:-$((SAMPLE_PORT + 1000))}"
 
+UPMS_JAR="$SERVICE_DIR/mars-cloud-upms-service/target/mars-cloud-upms-service.jar"
+SAMPLE_JAR="$SERVICE_DIR/mars-cloud-sample-service/target/mars-cloud-sample-service.jar"
+GATEWAY_JAR="$SERVICE_DIR/mars-cloud-gateway/target/mars-cloud-gateway.jar"
+MONITOR_JAR="$SERVICE_DIR/mars-cloud-monitor/target/mars-cloud-monitor.jar"
+for jar in "$UPMS_JAR" "$SAMPLE_JAR" "$GATEWAY_JAR" "$MONITOR_JAR"; do
+  [ -f "$jar" ] || { echo "找不到 $jar，先对四个模块执行 clean package" >&2; exit 2; }
+done
+
 JAEGER_QUERY="${JAEGER_QUERY:?追踪后端查询地址必须给出，例如 http://127.0.0.1:36686}"
 LOKI="${LOKI:?日志后端地址必须给出，例如 http://127.0.0.1:23100}"
 : "${OTLP_TRACING_ENDPOINT:?追踪导出端点必须给出}"
@@ -107,16 +115,16 @@ wait_health() {
 
 echo
 echo "② 启动四个部署物"
-SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar mars-cloud-upms-service/target/mars-cloud-upms-service.jar > "$LOG_DIR/upms.log" 2>&1 &
+SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" > "$LOG_DIR/upms.log" 2>&1 &
 UPMS_PID=$!
-SERVER_PORT="$SAMPLE_PORT" java "${JVM_FLAGS[@]}" -jar mars-cloud-sample-service/target/mars-cloud-sample-service.jar > "$LOG_DIR/sample.log" 2>&1 &
+SERVER_PORT="$SAMPLE_PORT" java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" > "$LOG_DIR/sample.log" 2>&1 &
 SAMPLE_PID=$!
 # 网关的日志级别只能在启动时给：它没有可写的日志级别端点（见下一节）。
 SERVER_PORT="$GATEWAY_PORT" LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CLOUD_GATEWAY=DEBUG \
-  java "${JVM_FLAGS[@]}" -jar mars-cloud-gateway/target/mars-cloud-gateway.jar > "$LOG_DIR/gateway.log" 2>&1 &
+  java "${JVM_FLAGS[@]}" -jar "$GATEWAY_JAR" > "$LOG_DIR/gateway.log" 2>&1 &
 GATEWAY_PID=$!
 SERVER_PORT="$MONITOR_PORT" \
-  java "${JVM_FLAGS[@]}" -jar mars-cloud-monitor/target/mars-cloud-monitor.jar > "$LOG_DIR/monitor.log" 2>&1 &
+  java "${JVM_FLAGS[@]}" -jar "$MONITOR_JAR" > "$LOG_DIR/monitor.log" 2>&1 &
 MONITOR_PID=$!
 for spec in "UPMS:$UPMS_MANAGEMENT_PORT" "示例服务:$SAMPLE_MANAGEMENT_PORT" "网关:$GATEWAY_MANAGEMENT_PORT" "监控面板:$MONITOR_MANAGEMENT_PORT"; do
   name="${spec%%:*}"; port="${spec##*:}"
@@ -140,14 +148,20 @@ check "授权决策服务的日志级别端点可写（带凭据）" "204" "$(ra
 anonymous=$(command curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
   -d '{"configuredLevel":"DEBUG"}' "http://127.0.0.1:$SAMPLE_MANAGEMENT_PORT/actuator/loggers/org.springframework.web")
 check "匿名写日志级别被拒" "401" "$anonymous"
+check "授权决策服务的指标端点匿名被拒" "401" \
+  "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
+check "授权决策服务的指标端点带凭据可读" "200" "$(command curl -s -o /dev/null -w '%{http_code}' \
+  -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
+check "示例服务的业务端口上没有管理端点" "404" \
+  "$(security_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SAMPLE_PORT/actuator/health")"
 
 echo
 echo "④ 经网关发起一次跨三进程的请求"
-TOKEN="$(cat "$MARS_SECURITY_TOKEN_FILE")"
+# 访问令牌经头文件传给 curl，不出现在命令行参数里。
 body=""
 waited=0
 while [ "$waited" -lt 90 ]; do
-  body=$(command curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  body=$(security_curl -s -H 'Content-Type: application/json' \
     -H "X-Mars-Verification: $RUN_ID" \
     -d '{"action":"view","resource":"demo:view:domain:kubernetes-ops"}' \
     "http://127.0.0.1:$GATEWAY_PORT/sample/v1/upms/decision")
@@ -175,7 +189,6 @@ fi
 
 echo
 echo "⑥ 追踪后端里是一条链，三个进程各有 span"
-sleep 6
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace "$JAEGER_QUERY" "$TRACE_ID" \
   mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service; then
   ok "追踪后端返回同一条链且三个进程都有 span"
@@ -185,6 +198,13 @@ fi
 
 echo
 echo "⑦ 日志推送到日志后端后按链路标识能查回三个服务，Grafana 能从日志行打开这条链"
+# 日志要推送到日志后端，推送前先确认里面没有测试签发器的令牌。
+if verify_no_test_credentials "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log" "$LOG_DIR/monitor.log"; then
+  ok "四份日志里没有测试令牌"
+else
+  bad "日志里出现了测试令牌，不推送"
+  exit 1
+fi
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" push-logs "$LOKI" "$RUN_ID" \
   "mars-cloud-gateway:$LOG_DIR/gateway.log" \
   "mars-cloud-sample-service:$LOG_DIR/sample.log" \
@@ -219,6 +239,12 @@ if python3 "$SERVICE_DIR/scripts/observability-e2e.py" applications "$MONITOR" \
 else
   bad "面板没有发现全部实例"
 fi
+# 实例显示 UP 只需要匿名可读的健康端点；经面板读一个需要认证的端点，才能证明面板带的实例凭据有效。
+SAMPLE_INSTANCE_ID="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" instance-ids "$MONITOR" \
+  "$MONITOR_USERNAME" "$MONITOR_PASSWORD" mars-cloud-sample-service | head -1)"
+check "经面板读取示例服务的指标端点" "200" "$(command curl -s -o /dev/null -w '%{http_code}' \
+  -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' \
+  "$MONITOR/instances/$SAMPLE_INSTANCE_ID/actuator/metrics")"
 # 面板读得到全部实例的管理端点，它的两个端口只绑 SERVER_ADDRESS（本机为回环地址）。
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" loopback-only "$MONITOR_PORT" "$MONITOR_MANAGEMENT_PORT"; then
   ok "面板的业务端口与管理端口从本机的非回环地址连不上"
