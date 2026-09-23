@@ -76,7 +76,7 @@ cp ../.env.example .env # 填写本机 Nacos Namespace 与账号
 `application-local.yml` 之所以能进版本库，是因为它**不含任何环境相关的取值**——
 它对每个人、每台机器都是同一份。反过来，任何带 host / 口令的配置都不该进仓。
 
-业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IP 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
+业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IPv4 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
 
 ### `.env` 怎么用
 

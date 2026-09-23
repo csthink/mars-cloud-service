@@ -47,7 +47,7 @@ server:
   port: 8103
   servlet:
     context-path: /sample
-  # 业务端口的绑定地址。本机缺省回环地址；部署时由环境变量给出实例的私网 IP 地址。
+  # 业务端口的绑定地址。本机缺省回环地址；部署时由环境变量给出实例的私网 IPv4 地址。
   # 管理端口的地址与注册到 Nacos 的地址由可观测性组件与 Nacos 组件从它推导，这里不另写。
   address: ${SERVER_ADDRESS:127.0.0.1}
 

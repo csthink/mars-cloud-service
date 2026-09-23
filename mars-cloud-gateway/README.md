@@ -48,7 +48,7 @@ curl -i -X POST http://127.0.0.1:8100/upms/v1/decision
 
 框架的 observability starter 给出管理端口 `9100`（业务端口加 1000）、链路追踪与结构化日志：
 
-- 业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IP 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
+- 业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IPv4 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
 - 网关没有接入 Spring Security，管理端点只暴露 `health` 与 `info`，启动时打一条告警说明管理端点无法建立认证链。
 - 每个经网关转发的请求在追踪后端里有网关的服务端与客户端两个 span，`traceparent` 随请求转发给目标服务，
   下游进程接续同一条 trace。

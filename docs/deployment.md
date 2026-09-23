@@ -123,7 +123,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | 激活的 profile，默认 `local` |
 | `SERVER_PORT` | 服务端口，覆盖配置文件里的值 |
-| `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址，缺省 `127.0.0.1`；部署时必填实例的私网 IP 地址，见「端口与 context path」 |
+| `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址，缺省 `127.0.0.1`；部署时必填实例的私网 IPv4 地址，见「端口与 context path」 |
 | `NACOS_SERVER_ADDR` / `NACOS_NAMESPACE_ID` | Nacos 地址与环境 Namespace ID |
 | `NACOS_USERNAME` / `NACOS_PASSWORD` | Nacos 账号与密码 |
 | `MARS_SECURITY_ISSUER_URI` | sample / UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
@@ -205,11 +205,12 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 管理端口的地址由框架的 observability starter、注册地址由 nacos starter 从它推导，见两个 starter 的说明。
 
 - 不设置时是 `127.0.0.1`：本机开发与验收只监听回环地址，同一台机器上的服务互相可达。
-- 部署时必须设置为实例在私网里能被其他实例访问的 IP 地址。不填 `0.0.0.0` 或主机名：注册地址等于这个值，
-  通配地址注册后其他实例连不上，主机名不参与推导。
+- 部署时必须设置为实例在私网里能被其他实例访问的 IPv4 地址。填通配地址（`0.0.0.0`、`::`）或主机名时框架不推导：
+  管理端口绑定全部网卡，注册地址由 Spring Cloud Alibaba 选第一块非回环网卡，不一定是这个实例的私网地址。
+- 填 IPv6 地址时只推导管理端口的地址，注册地址要另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP`。
 - 在容器里运行时填容器在私网里的地址，缺省的回环地址在容器外不可达。
-- 注册地址与绑定地址需要不同时（例如容器端口映射），另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP` 与
-  `SPRING_CLOUD_NACOS_DISCOVERY_PORT`，显式配置优先于推导。
+- 注册地址需要与绑定地址不同时，另外设置 `SPRING_CLOUD_NACOS_DISCOVERY_IP` 与
+  `SPRING_CLOUD_NACOS_DISCOVERY_PORT`，显式配置优先于推导。监控面板按注册地址与元数据里的 `management.port` 读取管理端点。
 
 端口一律可用 `SERVER_PORT` 覆盖。**服务间调用绕过网关**，因此每个服务都要自己完成鉴权，
 网关只是第一道——部署时不要假设「流量过了网关就一定是可信的」。
@@ -258,6 +259,6 @@ sample 到 UPMS 同样只经服务名调用。`mars-cloud-sample-service/verify-
 - [ ] Nacos 地址、Namespace 与凭据来自环境变量，配置正文没有明文凭据
 - [ ] `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` 已配置，管理端口只在内网可达；Swagger 已按需关闭
 - [ ] `SERVER_PORT` 与编排/网关配置一致
-- [ ] 每个实例都设置了 `SERVER_ADDRESS`，取值是实例的私网 IP 地址；从另一个实例能按这个地址连到它的业务端口与管理端口
+- [ ] 每个实例都设置了 `SERVER_ADDRESS`，取值是实例的私网 IPv4 地址；从另一个实例能按这个地址连到它的业务端口与管理端口
 - [ ] 已配置优雅停机与足够的终止宽限期
 - [ ] 失败响应不泄露内部信息：抽查一个错误响应，确认 `result` 为 `null`

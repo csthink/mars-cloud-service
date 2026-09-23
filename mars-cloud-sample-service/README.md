@@ -243,7 +243,7 @@ spring:
 `application-local.yml` 能进版本库，是因为它对每个人每台机器都是同一份；
 任何带 host 或口令的配置都不该进仓。`LocalConfigHygieneTest` 会守护这条约定。
 
-业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IP 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
+业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IPv4 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
 
 > Spring Boot **本身不读 `.env`**。`./run-local.sh`（即 `mvn spring-boot:run`）会自动读取
 > 模块根目录的 `.env`，而 `java -jar` **不会**——后者需要先
