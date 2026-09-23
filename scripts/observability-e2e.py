@@ -1,6 +1,7 @@
 """Helpers for the observability acceptance: read structured logs, query the trace and log backends."""
 import base64
 import json
+import os
 import pathlib
 import re
 import socket
@@ -203,10 +204,16 @@ def command_trace_link(grafana_base, trace_id, paths):
     return 0
 
 
-def command_applications(monitor_base, user, password, expected):
-    """The monitor must list every expected application with an UP status."""
+def monitor_headers():
+    """Basic credentials of the monitor administrator, taken from the exported environment, not from arguments."""
+    user, password = os.environ['MONITOR_USERNAME'], os.environ['MONITOR_PASSWORD']
     token = base64.b64encode(f'{user}:{password}'.encode()).decode()
-    headers = {'Authorization': 'Basic ' + token, 'Accept': 'application/json'}
+    return {'Authorization': 'Basic ' + token, 'Accept': 'application/json'}
+
+
+def command_applications(monitor_base, expected):
+    """The monitor must list every expected application with an UP status."""
+    headers = monitor_headers()
     for _ in range(20):
         try:
             status, body = fetch(f'{monitor_base}/applications', headers)
@@ -224,10 +231,9 @@ def command_applications(monitor_base, user, password, expected):
     return 1
 
 
-def command_instance_ids(monitor_base, user, password, name):
+def command_instance_ids(monitor_base, name):
     """Print the monitor's instance ids of one application, one per line."""
-    token = base64.b64encode(f'{user}:{password}'.encode()).decode()
-    headers = {'Authorization': 'Basic ' + token, 'Accept': 'application/json'}
+    headers = monitor_headers()
     try:
         status, body = fetch(f'{monitor_base}/applications', headers)
     except urllib.error.URLError as error:
@@ -297,8 +303,8 @@ COMMANDS = {
     'push-logs': lambda args: command_push_logs(args[0], args[1], args[2:]),
     'query-logs': lambda args: command_query_logs(args[0], args[1], args[2], args[3:]),
     'trace-link': lambda args: command_trace_link(args[0], args[1], args[2:]),
-    'applications': lambda args: command_applications(args[0], args[1], args[2], args[3:]),
-    'instance-ids': lambda args: command_instance_ids(args[0], args[1], args[2], args[3]),
+    'applications': lambda args: command_applications(args[0], args[1:]),
+    'instance-ids': lambda args: command_instance_ids(args[0], args[1]),
     'loopback-only': lambda args: command_loopback_only(args),
 }
 

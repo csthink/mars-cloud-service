@@ -133,8 +133,20 @@ done
 
 echo
 echo "③ 经管理端点把请求日志调到 DEBUG，让这次请求在三个进程里都留下日志行"
+# Basic 凭据经标准输入以 curl 配置的形式传入，不出现在命令行参数里（printf 是 shell 内建命令）。
+# curl 配置里双引号内的值要转义反斜杠与双引号。
+config_quote() { local value="${1//\\/\\\\}"; printf '%s' "${value//\"/\\\"}"; }
+basic_curl() { # 账号 口令 curl 参数…
+  local account phrase
+  account="$(config_quote "$1")"
+  phrase="$(config_quote "$2")"
+  shift 2
+  printf 'user = "%s:%s"\n' "$account" "$phrase" | command curl -K - "$@"
+}
+management_curl() { basic_curl "$MARS_MANAGEMENT_USERNAME" "$MARS_MANAGEMENT_PASSWORD" "$@"; }
+monitor_curl() { basic_curl "$MONITOR_USERNAME" "$MONITOR_PASSWORD" "$@"; }
 raise_level() { # 管理端口 logger
-  command curl -s -o /dev/null -w '%{http_code}' -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" \
+  management_curl -s -o /dev/null -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' -d '{"configuredLevel":"DEBUG"}' \
     "http://127.0.0.1:$1/actuator/loggers/$2"
 }
@@ -142,7 +154,8 @@ raise_level() { # 管理端口 logger
 # 日志级别端点因此不可达。这既是预期行为，也是收窄确实生效的证据。
 check "网关的日志级别端点按收窄不可达" "404" "$(raise_level "$GATEWAY_MANAGEMENT_PORT" org.springframework.cloud.gateway)"
 check "网关的健康端点仍匿名可读" "200" "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/health")"
-check "网关的指标端点按收窄不可达" "404" "$(command curl -s -o /dev/null -w '%{http_code}' -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/prometheus")"
+check "网关的指标端点按收窄不可达" "404" \
+  "$(management_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/prometheus")"
 check "示例服务的日志级别端点可写（带凭据）" "204" "$(raise_level "$SAMPLE_MANAGEMENT_PORT" org.springframework.web)"
 check "授权决策服务的日志级别端点可写（带凭据）" "204" "$(raise_level "$UPMS_MANAGEMENT_PORT" org.springframework.web)"
 anonymous=$(command curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
@@ -150,8 +163,8 @@ anonymous=$(command curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-T
 check "匿名写日志级别被拒" "401" "$anonymous"
 check "授权决策服务的指标端点匿名被拒" "401" \
   "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
-check "授权决策服务的指标端点带凭据可读" "200" "$(command curl -s -o /dev/null -w '%{http_code}' \
-  -u "$MARS_MANAGEMENT_USERNAME:$MARS_MANAGEMENT_PASSWORD" "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
+check "授权决策服务的指标端点带凭据可读" "200" \
+  "$(management_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$UPMS_MANAGEMENT_PORT/actuator/prometheus")"
 # 路径带示例服务的 context path：管理端点若回到业务端口，它在这个地址上返回 200。
 check "示例服务的业务端口上没有管理端点" "404" \
   "$(security_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SAMPLE_PORT/sample/actuator/health")"
@@ -199,17 +212,21 @@ fi
 
 echo
 echo "⑦ 日志推送到日志后端后按链路标识能查回三个服务，Grafana 能从日志行打开这条链"
-# 日志要推送到日志后端，推送前先确认里面没有测试签发器的令牌。
-if verify_no_test_credentials "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log" "$LOG_DIR/monitor.log"; then
+# 日志要推送到日志后端，推送前先确认里面没有测试签发器的令牌。进程还在写日志，
+# 所以先拷一份快照，检查与推送用同一份。
+PUSHED="$LOG_DIR/pushed"
+mkdir -p "$PUSHED"
+cp "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log" "$LOG_DIR/monitor.log" "$PUSHED/"
+if verify_no_test_credentials "$PUSHED/gateway.log" "$PUSHED/sample.log" "$PUSHED/upms.log" "$PUSHED/monitor.log"; then
   ok "四份日志里没有测试令牌"
 else
   bad "日志里出现了测试令牌，不推送"
   exit 1
 fi
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" push-logs "$LOKI" "$RUN_ID" \
-  "mars-cloud-gateway:$LOG_DIR/gateway.log" \
-  "mars-cloud-sample-service:$LOG_DIR/sample.log" \
-  "mars-cloud-upms-service:$LOG_DIR/upms.log"; then
+  "mars-cloud-gateway:$PUSHED/gateway.log" \
+  "mars-cloud-sample-service:$PUSHED/sample.log" \
+  "mars-cloud-upms-service:$PUSHED/upms.log"; then
   ok "三份日志已推送"
 else
   bad "日志推送失败"
@@ -224,7 +241,7 @@ fi
 GRAFANA="http://127.0.0.1:$(docker port "$GRAFANA_CONTAINER" 3000/tcp | head -1 | sed 's/.*://')"
 for _ in $(seq 1 60); do command curl -fs "$GRAFANA/api/health" >/dev/null 2>&1 && break; sleep 1; done
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" trace-link "$GRAFANA" "$TRACE_ID" \
-  "$LOG_DIR/gateway.log" "$LOG_DIR/sample.log" "$LOG_DIR/upms.log"; then
+  "$PUSHED/gateway.log" "$PUSHED/sample.log" "$PUSHED/upms.log"; then
   ok "Grafana 的关联字段能从三份日志取出本次链路标识并链到 Jaeger"
 else
   bad "Grafana 的关联字段不能从日志链到这条调用链"
@@ -232,9 +249,9 @@ fi
 
 echo
 echo "⑧ 监控面板发现全部实例"
+# 读面板的辅助命令从导出的 MONITOR_USERNAME 与 MONITOR_PASSWORD 取账号，不经命令行参数。
 MONITOR="http://127.0.0.1:$MONITOR_PORT"
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" applications "$MONITOR" \
-  "$MONITOR_USERNAME" "$MONITOR_PASSWORD" \
   mars-cloud-gateway mars-cloud-sample-service mars-cloud-upms-service mars-cloud-monitor; then
   ok "四个应用都在面板里且状态为 UP"
 else
@@ -242,10 +259,9 @@ else
 fi
 # 实例显示 UP 只需要匿名可读的健康端点；经面板读一个需要认证的端点，才能证明面板带的实例凭据有效。
 SAMPLE_INSTANCE_ID="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" instance-ids "$MONITOR" \
-  "$MONITOR_USERNAME" "$MONITOR_PASSWORD" mars-cloud-sample-service | head -1)"
-check "经面板读取示例服务的指标端点" "200" "$(command curl -s -o /dev/null -w '%{http_code}' \
-  -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' \
-  "$MONITOR/instances/$SAMPLE_INSTANCE_ID/actuator/metrics")"
+  mars-cloud-sample-service | head -1)"
+check "经面板读取示例服务的指标端点" "200" "$(monitor_curl -s -o /dev/null -w '%{http_code}' \
+  -H 'Accept: application/json' "$MONITOR/instances/$SAMPLE_INSTANCE_ID/actuator/metrics")"
 # 面板读得到全部实例的管理端点，它的两个端口只绑 SERVER_ADDRESS（本机为回环地址）。
 if python3 "$SERVICE_DIR/scripts/observability-e2e.py" loopback-only "$MONITOR_PORT" "$MONITOR_MANAGEMENT_PORT"; then
   ok "面板的业务端口与管理端口从本机的非回环地址连不上"
@@ -258,7 +274,7 @@ echo "⑨ 实例下线时面板写出日志通知"
 # 只认停机之后、为这一个示例服务实例写的通知行。面板若在示例服务的管理端口就绪之前发现它，
 # 启动阶段就会为它记一行 OFFLINE；不限定停机之后的行，检查会被那一行满足而不再等真正的下线。
 SAMPLE_INSTANCE_IDS="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" instance-ids "$MONITOR" \
-  "$MONITOR_USERNAME" "$MONITOR_PASSWORD" mars-cloud-sample-service | paste -sd '|' -)"
+  mars-cloud-sample-service | paste -sd '|' -)"
 MONITOR_LOG_OFFSET="$(wc -l < "$LOG_DIR/monitor.log" | tr -d ' ')"
 kill "$SAMPLE_PID" 2>/dev/null
 wait "$SAMPLE_PID" 2>/dev/null
