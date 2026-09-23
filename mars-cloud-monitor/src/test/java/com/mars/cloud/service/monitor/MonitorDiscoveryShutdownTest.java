@@ -1,5 +1,7 @@
 package com.mars.cloud.service.monitor;
 
+import com.alibaba.cloud.nacos.NacosDiscoveryProperties;
+import com.alibaba.cloud.nacos.registry.NacosGracefulShutdownDelegate;
 import de.codecentric.boot.admin.server.domain.entities.EventsourcingInstanceRepository;
 import de.codecentric.boot.admin.server.domain.entities.InstanceRepository;
 import de.codecentric.boot.admin.server.eventstore.InMemoryEventStore;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.cloud.client.discovery.event.HeartbeatEvent;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.support.GenericApplicationContext;
 
@@ -82,6 +85,34 @@ class MonitorDiscoveryShutdownTest {
         discovery.join(5000);
 
         assertThat(queryFinishedWhenClosed).isTrue();
+    }
+
+    /**
+     * 上下文关闭时，停止发现排在 Nacos 的优雅停机之前：优雅停机先注销并关闭客户端再等待，
+     * 排在它之后的话，等待期间的发现会重新创建客户端。Nacos 的监听器没有声明顺序，
+     * 本监听器靠 {@code @Order(HIGHEST_PRECEDENCE)} 排到前面；去掉这个声明，本用例失败。
+     */
+    @Test void discoveryStopsBeforeTheNacosGracefulShutdownRuns() {
+        AnnotationConfigApplicationContext closing = new AnnotationConfigApplicationContext();
+        AtomicBoolean discoveryStoppedFirst = new AtomicBoolean();
+        closing.registerBean(NacosGracefulShutdownDelegate.class,
+                () -> new NacosGracefulShutdownDelegate(null, new NacosDiscoveryProperties()) {
+                    @Override
+                    protected void doGracefulShutdown() {
+                        closing.getBean(ShutdownAwareInstanceDiscoveryListener.class)
+                                .onApplicationEvent(new HeartbeatEvent(this, 1L));
+                        discoveryStoppedFirst.set(discoveryClient.queries.get() == 0);
+                    }
+                });
+        closing.registerBean(ShutdownAwareInstanceDiscoveryListener.class, () -> {
+            InstanceRepository repository = new EventsourcingInstanceRepository(new InMemoryEventStore());
+            return new ShutdownAwareInstanceDiscoveryListener(discoveryClient,
+                    new InstanceRegistry(repository, new HashingInstanceUrlIdGenerator(), instance -> true), repository);
+        });
+        closing.refresh();
+        closing.close();
+
+        assertThat(discoveryStoppedFirst).isTrue();
     }
 
     private static final class RecordingDiscoveryClient implements DiscoveryClient {

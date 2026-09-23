@@ -14,6 +14,10 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>自带的监听器在没有同类 bean 时才装配；这里的创建方式与它相同（同样的构造参数、实例转换器与
  * {@code spring.boot.admin.discovery.*} 配置绑定），关掉 {@code spring.boot.admin.discovery.enabled} 时同样不装配。
+ *
+ * <p>自带装配上还有 {@code @ConditionalOnSingleCandidate(DiscoveryClient.class)}，这里有意不带：面板只经服务发现
+ * 找实例，没有发现客户端时应当启动失败，而不是带着空的实例列表运行。Spring Cloud 始终提供一个主发现客户端，
+ * 服务发现打开时这个条件本来就满足。
  */
 @Configuration(proxyBeanMethods = false)
 public class MonitorDiscoveryConfiguration {
