@@ -219,6 +219,12 @@ if python3 "$SERVICE_DIR/scripts/observability-e2e.py" applications "$MONITOR" \
 else
   bad "面板没有发现全部实例"
 fi
+# 面板读得到全部实例的管理端点，它的两个端口只绑 SERVER_ADDRESS（本机为回环地址）。
+if python3 "$SERVICE_DIR/scripts/observability-e2e.py" loopback-only "$MONITOR_PORT" "$MONITOR_MANAGEMENT_PORT"; then
+  ok "面板的业务端口与管理端口从本机的非回环地址连不上"
+else
+  bad "面板的端口在非回环地址上可达"
+fi
 
 echo
 echo "⑨ 实例下线时面板写出日志通知"

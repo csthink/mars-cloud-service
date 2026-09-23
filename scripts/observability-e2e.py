@@ -3,6 +3,7 @@ import base64
 import json
 import pathlib
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -217,6 +218,43 @@ def command_applications(monitor_base, user, password, expected):
     return 1
 
 
+def outbound_address():
+    """The IPv4 address this host uses for outbound traffic; connecting a UDP socket sends no packet."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(('192.0.2.1', 9))  # TEST-NET-1 (RFC 5737), never routed to a real host
+            address = probe.getsockname()[0]
+    except OSError:
+        return None
+    return None if address.startswith('127.') or address == '0.0.0.0' else address
+
+
+def reachable(address, port):
+    with socket.socket() as probe:
+        probe.settimeout(2)
+        return probe.connect_ex((address, port)) == 0
+
+
+def command_loopback_only(ports):
+    """Fail when any of the ports accepts connections on the host's non-loopback address."""
+    address = outbound_address()
+    if address is None:
+        print('本机没有非回环地址，无法核对绑定地址', file=sys.stderr)
+        return 1
+    # 对照：本脚本自己在全部网卡上监听的端口必须能从这个地址连上，否则下面的「连不上」说明不了绑定地址。
+    with socket.socket() as control:
+        control.bind(('0.0.0.0', 0))
+        control.listen(1)
+        if not reachable(address, control.getsockname()[1]):
+            print(f'从 {address} 连不上本机全部网卡上的对照端口，无法核对绑定地址', file=sys.stderr)
+            return 1
+    exposed = [port for port in ports if reachable(address, int(port))]
+    if exposed:
+        print(f'端口 {", ".join(exposed)} 可以从非回环地址 {address} 连接', file=sys.stderr)
+        return 1
+    return 0
+
+
 COMMANDS = {
     'trace-id': lambda args: command_trace_id(args),
     'log-fields': lambda args: command_log_fields(args[0], args[1:]),
@@ -225,6 +263,7 @@ COMMANDS = {
     'query-logs': lambda args: command_query_logs(args[0], args[1], args[2], args[3:]),
     'trace-link': lambda args: command_trace_link(args[0], args[1], args[2:]),
     'applications': lambda args: command_applications(args[0], args[1], args[2], args[3:]),
+    'loopback-only': lambda args: command_loopback_only(args),
 }
 
 if __name__ == '__main__':

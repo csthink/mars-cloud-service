@@ -48,6 +48,8 @@ spring:
         group: DEFAULT_GROUP
         username: ${NACOS_USERNAME:}
         password: ${NACOS_PASSWORD:}
+        # 注册地址与绑定地址一致。不写时注册第一块非回环网卡的地址，面板按它读取自己的管理端点会连不上。
+        ip: ${SERVER_ADDRESS:127.0.0.1}
   boot:
     admin:
       # 被监控实例的管理端点需要认证，面板用与服务一致的凭据去读。
@@ -55,6 +57,12 @@ spring:
       instance-auth:
         default-user-name: ${MARS_MANAGEMENT_USERNAME}
         default-password: ${MARS_MANAGEMENT_PASSWORD}
+
+management:
+  server:
+    # 管理端口不继承 server.address，没有这一项时绑定全部网卡。只写在这个文档里：测试 profile 让管理端点
+    # 与业务端点共用端口（port-offset=0），那时 Spring Boot 不允许单独配置管理端口的地址。
+    address: ${SERVER_ADDRESS:127.0.0.1}
 
 ---
 # 测试用文本格式的控制台日志，理由与其他部署物相同。

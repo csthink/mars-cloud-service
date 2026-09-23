@@ -2,8 +2,8 @@ FROM eclipse-temurin:25-jre
 WORKDIR /
 COPY target/mars-cloud-monitor.jar /app.jar
 EXPOSE 8190 9190
-# 第二个端口是管理端口（业务端口加 1000）。本部署物只绑内网地址，
-# 两个端口都不对公网开放，访问经跳板转发。
+# 第二个端口是管理端口（业务端口加 1000）。两个端口都绑定 SERVER_ADDRESS，运行时必须设为容器在私网里的地址：
+# 默认值 127.0.0.1 在容器外不可达。两个端口都不对公网开放，访问经跳板转发。
 # --sun-misc-unsafe-memory-access=allow：nacos-client 3.1.1 内部 shade 的 Guava 调用
 # sun.misc.Unsafe，JDK 24 起默认打印弃用警告（JEP 498）。
 # --enable-native-access=ALL-UNNAMED：面板经 Reactor Netty 读取各实例的管理端点，Netty 加载平台原生库
