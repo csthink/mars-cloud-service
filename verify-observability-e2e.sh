@@ -228,19 +228,24 @@ fi
 
 echo
 echo "⑨ 实例下线时面板写出日志通知"
+# 只认停机之后、为这一个示例服务实例写的通知行。面板若在示例服务的管理端口就绪之前发现它，
+# 启动阶段就会为它记一行 OFFLINE；不限定停机之后的行，检查会被那一行满足而不再等真正的下线。
+SAMPLE_INSTANCE_IDS="$(python3 "$SERVICE_DIR/scripts/observability-e2e.py" instance-ids "$MONITOR" \
+  "$MONITOR_USERNAME" "$MONITOR_PASSWORD" mars-cloud-sample-service | paste -sd '|' -)"
+MONITOR_LOG_OFFSET="$(wc -l < "$LOG_DIR/monitor.log" | tr -d ' ')"
 kill "$SAMPLE_PID" 2>/dev/null
 wait "$SAMPLE_PID" 2>/dev/null
 SAMPLE_PID=""
-# 只认日志通知为示例服务写的行。面板启动时会为它自己记一行 OFFLINE，
-# 分别匹配服务名与状态词会被那一行满足，检查就不再等示例服务真正下线。
 # 示例服务停止时先从 Nacos 注销、再等 10 秒才停机；面板的状态轮询与发现刷新互不等待，
 # 先到的一方决定通知是状态变化（OUT_OF_SERVICE 等）还是移除（DEREGISTERED），两种都算。
 # 移除在注销后一个 watch-delay（30 秒）内必然发生，所以 60 秒内一定有其中一行。
 notified=0
 notification=""
 for _ in $(seq 1 60); do
-  notification="$(grep -E '"logger":"de\.codecentric\.boot\.admin\.server\.notify\.LoggingNotifier"' "$LOG_DIR/monitor.log" \
-      | grep -oE 'Instance mars-cloud-sample-service \([0-9a-f]+\) (is (OFFLINE|DOWN|OUT_OF_SERVICE)|DEREGISTERED)' \
+  [ -n "$SAMPLE_INSTANCE_IDS" ] || break
+  notification="$(tail -n +"$((MONITOR_LOG_OFFSET + 1))" "$LOG_DIR/monitor.log" \
+      | grep -E '"logger":"de\.codecentric\.boot\.admin\.server\.notify\.LoggingNotifier"' \
+      | grep -oE "Instance mars-cloud-sample-service \(($SAMPLE_INSTANCE_IDS)\) (is (OFFLINE|DOWN|OUT_OF_SERVICE)|DEREGISTERED)" \
       | head -1 || true)"
   if [ -n "$notification" ]; then
     notified=1

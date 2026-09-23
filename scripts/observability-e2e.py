@@ -218,6 +218,35 @@ def command_applications(monitor_base, user, password, expected):
     return 1
 
 
+def command_instance_ids(monitor_base, user, password, name):
+    """Print the monitor's instance ids of one application, one per line."""
+    token = base64.b64encode(f'{user}:{password}'.encode()).decode()
+    headers = {'Authorization': 'Basic ' + token, 'Accept': 'application/json'}
+    try:
+        status, body = fetch(f'{monitor_base}/applications', headers)
+    except urllib.error.URLError as error:
+        print(f'读取监控面板失败：{error}', file=sys.stderr)
+        return 1
+    if status != 200:
+        print(f'读取监控面板返回 {status}', file=sys.stderr)
+        return 1
+    ids = []
+    for application in json.loads(body):
+        if application.get('name') != name:
+            continue
+        for instance in application.get('instances', []):
+            identifier = instance.get('id')
+            if isinstance(identifier, dict):
+                identifier = identifier.get('value')
+            if identifier:
+                ids.append(identifier)
+    if not ids:
+        print(f'监控面板里没有 {name} 的实例', file=sys.stderr)
+        return 1
+    print('\n'.join(ids))
+    return 0
+
+
 def outbound_address():
     """The IPv4 address this host uses for outbound traffic; connecting a UDP socket sends no packet."""
     try:
@@ -263,6 +292,7 @@ COMMANDS = {
     'query-logs': lambda args: command_query_logs(args[0], args[1], args[2], args[3:]),
     'trace-link': lambda args: command_trace_link(args[0], args[1], args[2:]),
     'applications': lambda args: command_applications(args[0], args[1], args[2], args[3:]),
+    'instance-ids': lambda args: command_instance_ids(args[0], args[1], args[2], args[3]),
     'loopback-only': lambda args: command_loopback_only(args),
 }
 
