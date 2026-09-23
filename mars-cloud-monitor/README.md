@@ -60,7 +60,7 @@ cp ../.env.example .env  # 填写本机 Nacos、面板账号与管理端点凭�
 
 ```bash
 set -a && . ./.env && set +a
-java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-monitor.jar
+java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-monitor.jar
 ```
 
 JVM 参数的原因见 [`docs/deployment.md`](../docs/deployment.md) 的「JVM 参数」一节。

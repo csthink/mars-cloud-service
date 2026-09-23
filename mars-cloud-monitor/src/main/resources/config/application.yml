@@ -3,6 +3,10 @@ spring:
     name: mars-cloud-monitor
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
+  thymeleaf:
+    # 面板页面的模板在 Spring Boot Admin 的 jar 里，由它自己的模板解析器加载；本模块没有默认的
+    # classpath:/templates/ 目录。不关掉这项检查，Spring Boot 每次启动都告警找不到模板目录。
+    check-template-location: false
 
 mars:
   env:

@@ -121,4 +121,24 @@
         </plugins>
     </build>
 
+    <!--
+      面板用 Netty 的 HTTP 客户端读取各实例的管理端点。Netty 在 macOS 上要用本机的 DNS 解析库，
+      缺少时每次启动打一条 ERROR 并退回通用解析方式；该库按处理器架构区分 classifier，只在对应的
+      macOS 上引入，与网关相同。
+    -->
+    <profiles>
+        <profile>
+            <id>macos-aarch64-dns</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-resolver-dns-native-macos</artifactId>
+                    <classifier>osx-aarch_64</classifier>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
 </project>

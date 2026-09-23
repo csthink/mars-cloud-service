@@ -42,13 +42,14 @@ mvn -pl mars-cloud-upms-service -am clean package
 | `mars-cloud-gateway` | `java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-gateway.jar` | `cd mars-cloud-gateway && ./run-local.sh` |
 | `mars-cloud-upms-service` | `java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-upms-service.jar` | `cd mars-cloud-upms-service && ./run-local.sh` |
 | `mars-cloud-sample-service` | `java --sun-misc-unsafe-memory-access=allow -jar target/mars-cloud-sample-service.jar` | `cd mars-cloud-sample-service && ./run-local.sh` |
+| `mars-cloud-monitor` | `java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-monitor.jar` | `cd mars-cloud-monitor && ./run-local.sh` |
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
-网关、UPMS 与 sample 都需要其中的 Nacos Namespace 与账号。
+网关、UPMS、sample 与监控面板都需要其中的 Nacos Namespace 与账号。
 sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否则通过 issuer 元数据发现。
 两服务的 audience 分别为自己的应用名；sample 调用 UPMS 时，访问令牌的 audience 必须同时包含两者。
 缺少认证配置时启动失败；健康探针允许匿名访问，业务接口需要合法 Bearer 令牌。
-三个服务启动命令中多出的 JVM 参数见下一节。
+启动命令中多出的 JVM 参数见下一节。
 
 > **`java -jar` 不会读 `.env`。** Spring Boot 本身没有 `.env` 支持——应用读的是
 > **环境变量**；`mvn spring-boot:run`（即 `run-local.sh`）只是恰好会加载模块根目录的
@@ -57,7 +58,7 @@ sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否�
 
 ## JVM 参数
 
-接入 Nacos 的服务（当前是网关、UPMS 与 sample）在 JDK 24 及以上启动时必须带：
+接入 Nacos 的服务（当前是网关、UPMS、sample 与监控面板）在 JDK 24 及以上启动时必须带：
 
 ```
 --sun-misc-unsafe-memory-access=allow
@@ -70,8 +71,8 @@ sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否�
 （[nacos#14070](https://github.com/alibaba/nacos/issues/14070)），不是本仓代码调用了 `Unsafe`；
 这个参数是 JDK 给出的规避方式，效果是把该次调用当作允许，不再打印警告。
 
-classpath 上带 Netty 平台原生库的服务（当前是网关：Reactor Netty 带来 macOS 的 DNS 解析器与
-Linux 的 epoll）还必须带：
+classpath 上带 Netty 平台原生库的服务（当前是网关与监控面板：两者都带 Reactor Netty，它带来 macOS 的
+DNS 解析器与 Linux 的 epoll）还必须带：
 
 ```
 --enable-native-access=ALL-UNNAMED
