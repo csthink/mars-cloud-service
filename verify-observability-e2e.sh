@@ -224,18 +224,25 @@ echo "⑨ 实例下线时面板写出日志通知"
 kill "$SAMPLE_PID" 2>/dev/null
 wait "$SAMPLE_PID" 2>/dev/null
 SAMPLE_PID=""
-# 只认日志通知为示例服务写的状态行。面板启动时会为它自己记一行 OFFLINE，
+# 只认日志通知为示例服务写的行。面板启动时会为它自己记一行 OFFLINE，
 # 分别匹配服务名与状态词会被那一行满足，检查就不再等示例服务真正下线。
+# 示例服务停止时先从 Nacos 注销、再等 10 秒才停机；面板的状态轮询与发现刷新互不等待，
+# 先到的一方决定通知是状态变化（OUT_OF_SERVICE 等）还是移除（DEREGISTERED），两种都算。
+# 移除在注销后一个 watch-delay（30 秒）内必然发生，所以 60 秒内一定有其中一行。
 notified=0
+notification=""
 for _ in $(seq 1 60); do
-  if grep -E '"logger":"de\.codecentric\.boot\.admin\.server\.notify\.LoggingNotifier"' "$LOG_DIR/monitor.log" \
-      | grep -qE 'Instance mars-cloud-sample-service \([0-9a-f]+\) is (OFFLINE|DOWN|OUT_OF_SERVICE)'; then
+  notification="$(grep -E '"logger":"de\.codecentric\.boot\.admin\.server\.notify\.LoggingNotifier"' "$LOG_DIR/monitor.log" \
+      | grep -oE 'Instance mars-cloud-sample-service \([0-9a-f]+\) (is (OFFLINE|DOWN|OUT_OF_SERVICE)|DEREGISTERED)' \
+      | head -1 || true)"
+  if [ -n "$notification" ]; then
     notified=1
     break
   fi
   sleep 1
 done
-check "面板的日志通知记录了示例服务的状态变化" "1" "$notified"
+check "面板的日志通知记录了示例服务下线（状态变化或移除）" "1" "$notified"
+[ -z "$notification" ] || echo "       通知：$notification"
 
 echo
 echo "──────────────────────────────"

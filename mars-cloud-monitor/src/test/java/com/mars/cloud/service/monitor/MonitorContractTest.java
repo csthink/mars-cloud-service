@@ -66,9 +66,14 @@ class MonitorContractTest {
                 .andExpect(status().isOk());
     }
 
-    /** 日志通知始终装配：实例状态变化要留下可检索的痕迹。 */
-    @Test void theLoggingNotifierIsAlwaysPresent() {
-        assertThat(context.getBeansOfType(LoggingNotifier.class)).isNotEmpty();
+    /**
+     * 日志通知始终装配，且只有一个：实例状态变化与移除都要留下可检索的痕迹，
+     * 两个日志通知器会把每条通知写两遍。
+     */
+    @Test void exactlyOneDeregistrationAwareLoggingNotifierIsPresent() {
+        assertThat(context.getBeansOfType(LoggingNotifier.class).values())
+                .singleElement()
+                .isInstanceOf(DeregistrationAwareLoggingNotifier.class);
     }
 
     /** 钉钉通知暂不支持，默认不装配；配置了地址时启动失败，见 {@link MonitorStartupFailureTest}。 */

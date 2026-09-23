@@ -1,7 +1,7 @@
 # mars-cloud-monitor
 
 运行中实例的**监控面板**：基于 Spring Boot Admin，经 Nacos 发现全部实例，展示健康状态、指标、日志级别与线程信息，
-实例状态变化时写出日志通知。被监控的服务不需要装客户端，也不需要改配置。
+实例状态变化或实例被移除时写出日志通知。被监控的服务不需要装客户端，也不需要改配置。
 
 - 入口类：`com.mars.cloud.service.monitor.MonitorApplication`
 - 端口：`8190`；管理端口 `9190`；无 context path
@@ -32,11 +32,25 @@ curl -u "$MONITOR_USERNAME:$MONITOR_PASSWORD" -H 'Accept: application/json' http
 
 ## 通知
 
-实例状态变化（例如 `UP` 变为 `OUT_OF_SERVICE` 或 `OFFLINE`）由 Spring Boot Admin 的日志通知写成一行 INFO：
+面板用 Spring Boot Admin 的日志通知，每条通知写成一行 INFO。两种情况都会写：
 
-```
-Instance mars-cloud-sample-service (13631fc3079b) is OUT_OF_SERVICE
-```
+- 实例状态变化，例如 `UP` 变为 `OUT_OF_SERVICE` 或 `OFFLINE`：
+
+  ```
+  Instance mars-cloud-sample-service (13631fc3079b) is OUT_OF_SERVICE
+  ```
+
+- 实例被移除：实例从 Nacos 注销（正常停止或进程退出）后，面板在下一次发现刷新时把它移除：
+
+  ```
+  Instance mars-cloud-sample-service (13631fc3079b) DEREGISTERED
+  ```
+
+两种都写的原因：实例停止时先从 Nacos 注销，面板的状态轮询（`spring.boot.admin.monitor.status-interval`，默认 10 秒）
+与发现刷新（`spring.cloud.nacos.discovery.watch-delay`，默认 30 秒）互不等待。发现刷新先到时，实例在状态轮询发现
+它下线之前就被移除；Spring Boot Admin 自带的日志通知只写状态变化，这时实例会从面板上消失而没有任何通知。
+移除在注销后一个发现刷新间隔内必然发生，所以每次实例下线至少有其中一行。滚动发布时，每个被替换的旧实例也会留下
+一行移除记录。
 
 日志随控制台输出一起被采集，是事后排查的依据。钉钉群机器人通知暂不支持：面板自带的钉钉通知器把签名参数编码了两次，
 与钉钉要求的单次编码不一致。设置 `spring.boot.admin.notify.dingtalk.webhook-url`（含空值）时面板启动失败，
@@ -68,7 +82,7 @@ JVM 参数的原因见 [`docs/deployment.md`](../docs/deployment.md) 的「JVM �
 ## 验收
 
 仓根的 `verify-observability-e2e.sh` 同时启动网关、UPMS、sample 与面板，核对面板发现四个应用且状态为 `UP`，
-并在停止 sample 后 60 秒内写出 sample 的状态变化日志。
+并在停止 sample 后 60 秒内为 sample 写出状态变化或移除的日志通知。
 
 ## 依赖边界
 

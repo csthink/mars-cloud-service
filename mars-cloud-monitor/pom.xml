@@ -17,7 +17,7 @@
     <packaging>jar</packaging>
 
     <name>mars-cloud-monitor</name>
-    <description>运行中实例的监控面板：经注册中心发现实例，读取各实例的管理端点，实例状态变化时通知</description>
+    <description>运行中实例的监控面板：经注册中心发现实例，读取各实例的管理端点，实例状态变化或被移除时通知</description>
 
     <dependencies>
         <!-- 监控面板服务端，自带界面与从注册中心发现实例的能力 -->

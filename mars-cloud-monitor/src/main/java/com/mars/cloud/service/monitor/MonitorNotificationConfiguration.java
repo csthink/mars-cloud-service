@@ -9,10 +9,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 实例状态变化的通知：只有日志通知。
+ * 实例状态变化与实例被移除的通知：只有日志通知。
  *
- * <p>日志通知始终存在：它把状态变化写成一行日志，被日志采集一并收走，
- * 是验收与事后排查的依据。
+ * <p>日志通知始终存在：它把状态变化与移除各写成一行日志，被日志采集一并收走，
+ * 是验收与事后排查的依据。移除也要写的原因见 {@link DeregistrationAwareLoggingNotifier}。
  *
  * <p>钉钉群机器人通知暂不支持。面板自带的钉钉通知器把签名参数编码了两次，
  * 与钉钉要求的单次编码不一致。它按 {@code spring.boot.admin.notify.dingtalk.webhook-url}
@@ -28,7 +28,7 @@ public class MonitorNotificationConfiguration {
 
     @Bean
     LoggingNotifier marsMonitorLoggingNotifier(InstanceRepository repository) {
-        return new LoggingNotifier(repository);
+        return new DeregistrationAwareLoggingNotifier(repository);
     }
 
     /** 按 bean 定义的类型判断，不实例化钉钉通知器。 */

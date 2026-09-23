@@ -183,7 +183,7 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 （[`dev/config/datasources.yaml`](../dev/config/datasources.yaml)）已把日志行的 `traceId` 链到 Jaeger。
 
 **实例监控**：`mars-cloud-monitor` 经 Nacos 发现全部实例，按实例元数据里的 `management.port` 读取各实例的管理端点，
-实例状态变化写成日志通知。它只绑内网地址，不经网关，见该模块 README。
+实例状态变化与实例被移除都写成日志通知。它只绑内网地址，不经网关，见该模块 README。
 
 ## 端口与 context path
 
