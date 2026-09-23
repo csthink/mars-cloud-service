@@ -48,7 +48,7 @@ curl -i -X POST http://127.0.0.1:8100/upms/v1/decision
 
 框架的 observability starter 给出管理端口 `9100`（业务端口加 1000）、链路追踪与结构化日志：
 
-- 网关没有接入 Spring Security，管理端点只暴露 `health` 与 `info`，启动时打一条告警说明暴露面已收窄。
+- 网关没有接入 Spring Security，管理端点只暴露 `health` 与 `info`，启动时打一条告警说明管理端点无法建立认证链。
 - 每个经网关转发的请求在追踪后端里有网关的服务端与客户端两个 span，`traceparent` 随请求转发给目标服务，
   下游进程接续同一条 trace。
 - 控制台日志是带 `traceId` 的 JSON。网关是响应式栈，请求处理会在 Reactor 线程之间切换，
