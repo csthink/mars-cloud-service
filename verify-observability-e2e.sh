@@ -2,7 +2,7 @@
 #
 # 可观测性的真进程验收：一次经网关到示例服务再到授权决策服务的请求，
 # 在追踪后端是一条链、三个进程各有 span，三个进程的日志带同一个链路标识，
-# 日志按该标识能查回三个服务，监控面板能看到全部实例并在实例下线时通知。
+# 日志按该标识能查回三个服务，监控面板能看到全部实例并在实例下线时写出日志通知。
 #
 # 前置：本机中间件已启动（追踪后端、日志后端、注册中心）；四个模块已 clean package；
 # 环境文件给出注册中心连接、端口与管理端点凭据。
@@ -53,7 +53,7 @@ ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  FAIL %s\n       %s\n' "$1" "${2:-}"; fail=$((fail + 1)); }
 
 cleanup() {
-  for pid in "${MONITOR_PID:-}" "${GATEWAY_PID:-}" "${SAMPLE_PID:-}" "${UPMS_PID:-}" "${WEBHOOK_PID:-}"; do
+  for pid in "${MONITOR_PID:-}" "${GATEWAY_PID:-}" "${SAMPLE_PID:-}" "${UPMS_PID:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null
   done
   stop_security_test_issuer
@@ -73,49 +73,9 @@ then
   exit 2
 fi
 
-echo "① 启动群机器人接收器与测试签发器"
-# 接收器目录放在日志目录下：收到的通知与各进程日志一起留作证据，也不在别处留下临时目录。
-WEBHOOK_DIR="$LOG_DIR/webhook"
-mkdir -p "$WEBHOOK_DIR"
-python3 - "$WEBHOOK_DIR" <<'PY' > "$LOG_DIR/webhook.log" 2>&1 &
-import http.server, pathlib, sys
-directory = pathlib.Path(sys.argv[1])
-class Handler(http.server.BaseHTTPRequestHandler):
-    def read_body(self):
-        # 面板用 RestTemplate 发通知，请求体按分块传输编码发送，没有 Content-Length。
-        # 只按 Content-Length 读会得到空请求体，所以两种编码都要处理。
-        if self.headers.get('Transfer-Encoding', '').lower() != 'chunked':
-            return self.rfile.read(int(self.headers.get('Content-Length', 0)))
-        body = b''
-        while True:
-            size = int(self.rfile.readline().split(b';')[0].strip(), 16)
-            if size == 0:
-                while self.rfile.readline().strip():
-                    pass
-                return body
-            body += self.rfile.read(size)
-            self.rfile.readline()
-    def do_POST(self):
-        body = self.read_body()
-        encoding = self.headers.get('Transfer-Encoding') or 'Content-Length'
-        print(f'POST {self.path} {encoding} {len(body)} bytes', flush=True)
-        # 每条通知一行，面板可能先后发出多条，后一条不能覆盖前一条。
-        with (directory / 'received').open('ab') as received:
-            received.write(body.replace(b'\n', b' ') + b'\n')
-        self.send_response(200)
-        self.end_headers()
-    def log_message(self, *args):
-        pass
-server = http.server.HTTPServer(('127.0.0.1', 0), Handler)
-(directory / 'port').write_text(str(server.server_address[1]))
-server.serve_forever()
-PY
-WEBHOOK_PID=$!
-for _ in $(seq 1 50); do [ -s "$WEBHOOK_DIR/port" ] && break; sleep 0.1; done
-[ -s "$WEBHOOK_DIR/port" ] || { echo "群机器人接收器未就绪" >&2; exit 1; }
-WEBHOOK_URL="http://127.0.0.1:$(cat "$WEBHOOK_DIR/port")/hook"
+echo "① 启动测试签发器"
 start_security_test_issuer "$SERVICE_DIR" || exit 1
-ok "群机器人接收器与测试签发器就绪"
+ok "测试签发器就绪"
 
 wait_health() {
   local port="$1" limit="${2:-90}" waited=0
@@ -138,10 +98,7 @@ SAMPLE_PID=$!
 SERVER_PORT="$GATEWAY_PORT" LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CLOUD_GATEWAY=DEBUG \
   java "${JVM_FLAGS[@]}" -jar mars-cloud-gateway/target/mars-cloud-gateway.jar > "$LOG_DIR/gateway.log" 2>&1 &
 GATEWAY_PID=$!
-# 群机器人通知的实现无条件加签，webhook 地址与密钥必须成对给出，
-# 只给地址会在发送时因为空密钥报错。接收器不校验签名，这里给一个任意密钥。
-SERVER_PORT="$MONITOR_PORT" SPRING_BOOT_ADMIN_NOTIFY_DINGTALK_WEBHOOK_URL="$WEBHOOK_URL" \
-  SPRING_BOOT_ADMIN_NOTIFY_DINGTALK_SECRET="verification-secret" \
+SERVER_PORT="$MONITOR_PORT" \
   java "${JVM_FLAGS[@]}" -jar mars-cloud-monitor/target/mars-cloud-monitor.jar > "$LOG_DIR/monitor.log" 2>&1 &
 MONITOR_PID=$!
 for spec in "UPMS:$UPMS_MANAGEMENT_PORT" "示例服务:$SAMPLE_MANAGEMENT_PORT" "网关:$GATEWAY_MANAGEMENT_PORT" "监控面板:$MONITOR_MANAGEMENT_PORT"; do
@@ -239,31 +196,22 @@ else
 fi
 
 echo
-echo "⑨ 实例下线时面板发出通知"
+echo "⑨ 实例下线时面板写出日志通知"
 kill "$SAMPLE_PID" 2>/dev/null
 wait "$SAMPLE_PID" 2>/dev/null
 SAMPLE_PID=""
-# 只认示例服务自己的状态行。面板启动时会为它自己记一行 OFFLINE，
+# 只认日志通知为示例服务写的状态行。面板启动时会为它自己记一行 OFFLINE，
 # 分别匹配服务名与状态词会被那一行满足，检查就不再等示例服务真正下线。
-status_changed=0
-for _ in $(seq 1 60); do
-  if grep -qE 'Instance mars-cloud-sample-service \([0-9a-f]+\) is (OFFLINE|DOWN|OUT_OF_SERVICE)' "$LOG_DIR/monitor.log"; then
-    status_changed=1
-    break
-  fi
-  sleep 1
-done
-check "面板日志出现示例服务的状态变化" "1" "$status_changed"
-# 通知在状态变化之后异步发出，要等它送达，并确认说的是示例服务。
 notified=0
-for _ in $(seq 1 30); do
-  if grep -q 'mars-cloud-sample-service' "$WEBHOOK_DIR/received" 2>/dev/null; then
+for _ in $(seq 1 60); do
+  if grep -E '"logger":"de\.codecentric\.boot\.admin\.server\.notify\.LoggingNotifier"' "$LOG_DIR/monitor.log" \
+      | grep -qE 'Instance mars-cloud-sample-service \([0-9a-f]+\) is (OFFLINE|DOWN|OUT_OF_SERVICE)'; then
     notified=1
     break
   fi
   sleep 1
 done
-check "群机器人接收器收到示例服务状态变化的通知" "1" "$notified"
+check "面板的日志通知记录了示例服务的状态变化" "1" "$notified"
 
 echo
 echo "──────────────────────────────"

@@ -71,8 +71,8 @@ class MonitorContractTest {
         assertThat(context.getBeansOfType(LoggingNotifier.class)).isNotEmpty();
     }
 
-    /** 没配 webhook 地址时不装配群机器人通知。 */
-    @Test void theChatNotifierIsAbsentWithoutAWebhookUrl() {
+    /** 钉钉通知暂不支持，默认不装配；配置了地址时启动失败，见 {@link MonitorStartupFailureTest}。 */
+    @Test void theDingTalkNotifierIsAbsent() {
         assertThat(context.getBeansOfType(DingTalkNotifier.class)).isEmpty();
     }
 
