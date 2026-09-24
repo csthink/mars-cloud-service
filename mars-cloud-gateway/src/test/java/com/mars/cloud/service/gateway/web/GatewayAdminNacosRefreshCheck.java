@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "mars.observability.logging.console-format=plain"
 })
 @ActiveProfiles("local")
-class GatewayAdminNacosRefreshTest {
+class GatewayAdminNacosRefreshCheck {
     private static final TestIdentityProvider ISSUER = new TestIdentityProvider();
     private static final String DATA_ID = "mars-cloud-gateway.yaml";
     private static final String GROUP = "DEFAULT_GROUP";

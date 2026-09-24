@@ -155,6 +155,8 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
 
 `verify-revocation-e2e.sh` 使用打包后的网关、`dev/images.lock.json` 指定的独立 Redis 容器与本地 HTTP 上游，核对会话撤销、无效 `sid`、Redis 停止后的 `63005/503` 和恢复。运行前需打包 gateway 与 sample 模块，并在本机准备已锁定的 Redis 镜像；脚本使用 `local,test` profile，不连接 Nacos，也不停止共用中间件。
 
+真实 Nacos 白名单刷新可在独立 Namespace 中显式运行 `GatewayAdminNacosRefreshCheck`。先加载本模块的 `.env`，再执行 `MARS_REAL_NACOS_TEST=true mvn -Dtest=GatewayAdminNacosRefreshCheck test`。检查会暂时更新该 Namespace 的网关应用配置，并在结束前写回原内容、等待读回一致；默认测试流程不运行这项会修改 Nacos 配置的检查。
+
 ```bash
 mvn -f .. package                 # 网关与 UPMS 都需要 package
 ./verify-e2e.sh                   # 需要本机 Nacos 与本目录的 .env
