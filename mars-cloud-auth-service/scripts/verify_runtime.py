@@ -2,6 +2,7 @@
 """Run real-process authentication checks using explicitly prepared verification databases."""
 from contextlib import contextmanager
 import base64
+import datetime as dt
 import hashlib
 import json
 import os
@@ -14,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from verify_auth import Browser, protected, require
+from resume_sms_budget import command as redis_command
 
 MODULE=Path(__file__).resolve().parents[1]
 ROOT=MODULE.parent
@@ -125,7 +127,7 @@ def verify_log(path):
         level=event.get('log',{}).get('level',event.get('level'))
         if level in {'WARN','ERROR'}:
             require(event.get('message') in allowed,'Unexpected warning or error; inspect private verification logs')
-    for name in ['MARS_AUTH_LOCAL_LOGIN_PASSWORD','MARS_AUTH_JWK_ENCRYPTION_KEY','SPRING_DATASOURCE_PASSWORD','SPRING_DATA_REDIS_PASSWORD','MARS_MANAGEMENT_PASSWORD']:
+    for name in ['MARS_AUTH_LOCAL_LOGIN_PASSWORD','MARS_AUTH_JWK_ENCRYPTION_KEY','MARS_AUTH_SMS_HMAC_KEY','SPRING_DATASOURCE_PASSWORD','SPRING_DATA_REDIS_PASSWORD','MARS_MANAGEMENT_PASSWORD']:
         value=ENV.get(name)
         if value:
             require(value not in path.read_text(),'A credential appeared in application logs')
@@ -133,6 +135,47 @@ def verify_log(path):
 
 def protocol(phase):
     subprocess.run(['python3',str(MODULE/'scripts/verify_auth.py'),'--base',BASE,'--ca',str(CA),'--state-dir',str(STATE/'protocol'),'--phase',phase],env=ENV,check=True,timeout=90)
+
+
+def budget_resume():
+    today=dt.datetime.now(dt.timezone.utc).date().isoformat()
+    budget_key='mars:auth:sms:budget:'+today
+    pause_key='mars:auth:sms:budget:paused'
+    alert_key='mars:auth:sms:budget:alert'
+    with socket.create_connection((required('SPRING_DATA_REDIS_HOST'),int(required('SPRING_DATA_REDIS_PORT'))),timeout=5) as connection:
+        connection.settimeout(5)
+        if ENV.get('SPRING_DATA_REDIS_PASSWORD'):
+            redis_command(connection,'AUTH',ENV['SPRING_DATA_REDIS_PASSWORD'])
+        redis_command(connection,'SELECT',required('SPRING_DATA_REDIS_DATABASE'))
+        original=redis_command(connection,'GET',budget_key)
+        original_ttl=redis_command(connection,'PTTL',budget_key)
+        require(redis_command(connection,'GET',pause_key) is None and
+                redis_command(connection,'GET',alert_key) is None,
+                'Budget resume probe requires unpaused isolated Redis')
+        audit=STATE/'sms-budget-audit.jsonl'
+        command_line=['python3',str(MODULE/'scripts/resume_sms_budget.py'),'--operator','acceptance',
+                      '--reason','verification','--audit-file',str(audit)]
+        try:
+            redis_command(connection,'SET',pause_key,'1')
+            redis_command(connection,'SET',budget_key,ENV.get('MARS_AUTH_SMS_DAILY_BUDGET','2000'))
+            denied=subprocess.run(command_line,env=ENV,capture_output=True,text=True,timeout=10)
+            require(denied.returncode!=0 and redis_command(connection,'GET',pause_key)=='1',
+                    'Resume must reject a still-exhausted budget')
+            redis_command(connection,'SET',budget_key,'0')
+            accepted=subprocess.run(command_line,env=ENV,capture_output=True,text=True,timeout=10)
+            require(accepted.returncode==0 and redis_command(connection,'GET',pause_key) is None,
+                    'Operator resume must clear pause after budget check')
+            actions=[json.loads(line)['action'] for line in audit.read_text().splitlines()]
+            require(actions==['resume_sms_budget_requested','resume_sms_budget_rejected',
+                              'resume_sms_budget_requested','resume_sms_budget_completed'],
+                    'Budget resume must leave complete private audit records')
+        finally:
+            if original is None: redis_command(connection,'DEL',budget_key)
+            else:
+                redis_command(connection,'SET',budget_key,original)
+                if original_ttl>=0: redis_command(connection,'PEXPIRE',budget_key,original_ttl)
+            redis_command(connection,'DEL',pause_key,alert_key)
+    print('PASS: SMS budget resume rejection, authorized recovery and private audit',flush=True)
 
 
 production=environment_file('AUTH_PRODUCTION_ENV_FILE')
@@ -143,12 +186,17 @@ with running('local-before',ENV) as log:
     probe('com.mars.cloud.service.auth.verification.DatabaseProbe',ENV)
     require(management(PORT,'/actuator/info')==401,'Management info requires credentials')
     require(management(PORT,'/actuator/info',True)==200,'Management credentials must work only on management endpoints')
+    subprocess.run(['python3',str(MODULE/'scripts/verify_sms.py'),'--base',BASE,'--ca',str(CA),
+                    '--audit-output',str(STATE/'sms-account-id')],env=ENV,check=True,timeout=90)
+    probe('com.mars.cloud.service.auth.verification.SmsAuditProbe',ENV,str(STATE/'sms-account-id'))
     protocol('before-restart')
     probe('com.mars.cloud.service.auth.configuration.SessionProbe',ENV)
 verify_log(log)
 with running('local-after',ENV) as log:
     protocol('after-restart')
 verify_log(log)
+probe('com.mars.cloud.service.auth.verification.SmsRiskProbe',ENV)
+budget_resume()
 clients=['portal','flippo-book','wonder-lab','english-word-card','console','csthink-assistant']
 lines=['mars:','  auth:','    clients:']
 for client in clients:
@@ -156,14 +204,15 @@ for client in clients:
     lines.extend(['      '+client+':','        redirect-uris: ["'+origin+'/callback"]','        post-logout-redirect-uris: ["'+origin+'/logged-out"]'])
 config=STATE/'production-clients.yml'
 protected(config,'\n'.join(lines)+'\n')
-prod={**ENV,**production,'SERVER_PORT':str(PORT+10),'SPRING_PROFILES_ACTIVE':'production','MARS_AUTH_ISSUER':'https://auth.example','MARS_AUTH_LOCAL_LOGIN_ENABLED':'false','SPRING_CONFIG_ADDITIONAL_LOCATION':'file:'+str(config)}
+prod={**ENV,**production,'SERVER_PORT':str(PORT+10),'SPRING_PROFILES_ACTIVE':'production','MARS_AUTH_ISSUER':'https://auth.example','MARS_AUTH_LOCAL_LOGIN_ENABLED':'false','MARS_AUTH_SMS_MOCK_ENABLED':'false','SPRING_CONFIG_ADDITIONAL_LOCATION':'file:'+str(config)}
 with running('production',prod) as log:
     status,_,_=Browser(f'https://127.0.0.1:{PORT+10}',CA).request('/login')
-    require(status in {403,404},'Production must not expose the default test login')
+    require(status==503,'Production without an SMS sender must fail closed')
 verify_log(log)
 for name,overrides,message in [
     ('test-data',{key:ENV[key] for key in ['SPRING_DATASOURCE_URL','SPRING_DATASOURCE_USERNAME','SPRING_DATASOURCE_PASSWORD']},'Test data is forbidden outside local/test'),
     ('local-login',{'MARS_AUTH_LOCAL_LOGIN_ENABLED':'true'},'Local login is restricted to local/test profiles'),
+    ('mock-sms',{'MARS_AUTH_SMS_MOCK_ENABLED':'true'},'Mock SMS requires local/test'),
     ('wrong-key',{'MARS_AUTH_JWK_ENCRYPTION_KEY':base64.b64encode(os.urandom(32)).decode()},'Cannot decrypt signing-key material'),
     ('missing-key',{'MARS_AUTH_JWK_ENCRYPTION_KEY':''},'A 256-bit signing-key encryption key is required'),
 ]:

@@ -39,6 +39,12 @@ mars:
     jwk:
       encryption-key: ${MARS_AUTH_JWK_ENCRYPTION_KEY:}
       encryption-key-id: ${MARS_AUTH_JWK_ENCRYPTION_KEY_ID:}
+    sms:
+      hmac-key: ${MARS_AUTH_SMS_HMAC_KEY:}
+      mock-enabled: ${MARS_AUTH_SMS_MOCK_ENABLED:false}
+      mock-outbox: ${MARS_AUTH_SMS_MOCK_OUTBOX:}
+      daily-budget: ${MARS_AUTH_SMS_DAILY_BUDGET:2000}
+      captcha-error-threshold: ${MARS_AUTH_SMS_CAPTCHA_ERROR_THRESHOLD:3}
     local-login:
       enabled: ${MARS_AUTH_LOCAL_LOGIN_ENABLED:false}
       user-id: ${MARS_AUTH_LOCAL_LOGIN_USER_ID:}

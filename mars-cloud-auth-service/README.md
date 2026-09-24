@@ -2,7 +2,7 @@
 
 提供 Authorization Code + PKCE S256、OpenID Connect 发现、公钥发布、持久化授权和 Redis 登录会话。业务端口默认 8101，HTTP 管理端口为 9101。没有 context path。
 
-生产登录入口尚未接入短信服务。默认口令表单只供显式启用的 local / test 验证；生产没有默认用户。公共客户端续期、设备数量限制、设备撤销和定制登录页尚未提供。
+短信验证码登录已接入现有授权码流程。当前只有 local / test 的受保护 mock 发送方；正式短信发送方尚未接入，生产发码请求返回 503，不建立短信挑战。默认口令表单只供显式启用的 local / test 验证；生产没有默认用户。公共客户端续期、设备数量限制、设备撤销和定制登录页尚未提供。
 
 ## 端点与客户端
 
@@ -14,6 +14,8 @@
 | `/userinfo` | Bearer 访问，只返回 `sub` |
 | `/connect/logout` | 标准 RP-Initiated Logout，严格校验登出后地址 |
 | `/auth/v1/me` | Bearer 身份验证与统一业务响应；Cookie 不替代访问令牌 |
+| `/login/sms/send`、`/login/sms/authenticate` | 同源会话内发码与短信登录；成功后继续原授权请求 |
+| `/login/captcha` | 按 SEND 或 VERIFY 用途生成一次性 PNG 图形验证码 |
 | 管理端口 `/actuator/health/readiness` | 同时检查应用状态、MySQL 和 Redis |
 
 标准协议端点使用协议自己的响应格式。管理端点沿用框架约定，`health` 匿名，其余 Basic。管理账号不能用于用户登录。
@@ -37,6 +39,10 @@
 - `MARS_AUTH_ISSUER`：明确的 HTTPS issuer。正式部署使用 DNS 名；本地只允许与业务端口一致的 `https://127.0.0.1:<port>`。转发头处理保持关闭，代理入口另行配置。
 - `MARS_AUTH_JWK_ENCRYPTION_KEY`：随机 32 字节的 Base64 编码；`MARS_AUTH_JWK_ENCRYPTION_KEY_ID`：密钥版本。两项需持久保管，重启时保持一致。RSA 私钥经 AES-GCM 加密保存，数据库仅发布公钥。
 - `SPRING_CONFIG_ADDITIONAL_LOCATION`：受控客户端 YAML 文件，包含六个客户端各自的 `redirect-uris`、`post-logout-redirect-uris`。正式浏览器必须精确 HTTPS 地址，原生必须为带明确端口的字面 `127.0.0.1` 地址。
+- `MARS_AUTH_SMS_HMAC_KEY`：启用发码前配置独立随机 32 字节的 Base64 编码密钥，各实例使用相同值；不与 JWK 密钥共用。
+- `MARS_AUTH_SMS_DAILY_BUDGET`：UTC 自然日发码上限，默认 2000，必须为正数；耗尽后持续停发，运维核对后使用 `scripts/resume_sms_budget.py` 恢复。
+- `MARS_AUTH_SMS_CAPTCHA_ERROR_THRESHOLD`：同号及当前会话的错误验证码次数阈值，默认 3，范围为 1 到 5。
+- `MARS_AUTH_SMS_MOCK_ENABLED`、`MARS_AUTH_SMS_MOCK_OUTBOX`：仅供 local / test 显式启用；收件箱必须位于受保护的 `dev/.local/` 目录。
 
 客户端配置示例片段：
 
@@ -53,7 +59,18 @@ mars:
 
 Flyway 管理九张应用表与自己的历史表，不启用 `clean` 或自动 baseline。使用空库或已有匹配迁移历史的库；未知非空库需要另行处理，不能删除原表来绕过检查。已执行迁移不可改写。
 
-账号绑定按 `(channel, identity_scope, subject)` 完整三元组唯一，区分大小写、重音及 subject 尾部空格；同一账号可有多个渠道绑定。当前账号写入只接受已验证的规范化 E.164 手机号，使用 `SMS/e164`，账号、绑定和审计在同一事务提交。该应用服务没有公开短信或换绑接口，也不把调用方提供的渠道资料直接当作认证结果。
+账号绑定按 `(channel, identity_scope, subject)` 完整三元组唯一，区分大小写、重音及 subject 尾部空格；同一账号可有多个渠道绑定。当前账号写入只接受已验证的规范化 E.164 手机号，使用 `SMS/e164`，账号、绑定和审计在同一事务提交。短信登录仅接受 LOGIN 用途；手机号换绑接口尚未提供。调用方提供的渠道资料不能直接作为认证结果。
+
+短信挑战有效期五分钟，同号同用途的新挑战覆盖旧挑战；验证码最多校验五次，成功后原子删除。发码按同号一分钟一次、滚动 24 小时十次，以及来源 IP 滚动一小时十次、滚动 24 小时五十次限制。达到图形验证码阈值时，先验证图形答案再预留发码额度。来源 IP 取服务端看到的连接对端地址。
+
+日预算暂停后，运维先核对当前 UTC 日期的发送计数与配置上限，再在受保护环境执行恢复命令。恢复操作会先写入请求记录，再原子检查计数并清除暂停标记；计数仍达到上限时拒绝恢复。`--audit-file` 的上级目录须为 `0700`，文件为 `0600`，操作原因不要包含手机号或验证码。
+
+```bash
+set -a; . mars-cloud-auth-service/.env; set +a
+python3 mars-cloud-auth-service/scripts/resume_sms_budget.py \
+  --operator operator-id --reason 'budget reviewed' \
+  --audit-file dev/.local/auth-local/sms-budget-audit.jsonl
+```
 
 Redis 使用有主体索引的 30 天滑动会话。Cookie 为 `__Host-mars-session`、Secure、HttpOnly、Path=/、SameSite=Lax，不设 Domain。登录更换会话标识，业务 Bearer 请求不修改登录会话。授权码兑换在 MySQL 行锁事务内完成；这保证一次消费，不代表已经完成生产吞吐测试。
 
@@ -67,7 +84,7 @@ Redis 使用有主体索引的 30 天滑动会话。Cookie 为 `__Host-mars-sess
 python3 mars-cloud-auth-service/scripts/prepare_local.py --port 8101
 ```
 
-生成文件位于 ignored `dev/.local/auth-local/`，证书有效期七天；不会安装系统信任。把 `local.env` 的变量合入模块 `.env`，保留原有数据库、Redis、Nacos、管理凭据及 Maven 隔离参数。后续复用该文件，不重新生成已使用的根密钥。
+生成文件位于 ignored `dev/.local/auth-local/`，证书有效期七天；不会安装系统信任。把 `local.env` 的变量合入模块 `.env`，保留原有数据库、Redis、Nacos、管理凭据及 Maven 隔离参数。短信 mock 的验证码只写入该目录的 `sms-outbox.txt`。后续复用这些文件，不重新生成已使用的密钥。
 
 ```bash
 mvn -pl mars-cloud-auth-service package
@@ -96,6 +113,6 @@ cd mars-cloud-auth-service
 ./mars-cloud-auth-service/verify-e2e.sh
 ```
 
-脚本自行启动和停止打包进程，使用独立 jar 副本，验证 PKCE、六客户端 audience、原生同意与取消、并发兑换、MySQL 约束及事务、Redis 主体索引、重启、协议登出、正式配置和拒绝启动路径；日志只允许已说明的 MySQL/Flyway 版本提示及刻意触发的授权撤销提示。退出码非零表示失败，完整结果保留在 ignored `dev/.local/auth-acceptance-*`。
+脚本自行启动和停止打包进程，使用独立 jar 副本，验证短信登录、同源与 CSRF 拒绝、图形 PNG、错误阈值、发码频控、预算暂停及恢复、登录审计、会话更换、PKCE、六客户端 audience、原生同意与取消、并发兑换、MySQL 约束及事务、Redis 主体索引、重启、协议登出、正式配置和拒绝启动路径；日志只允许已说明的 MySQL/Flyway 版本提示及刻意触发的授权撤销提示。退出码非零表示失败，完整结果保留在 ignored `dev/.local/auth-acceptance-*`。
 
 浏览器验收可在服务已启动时运行 `scripts/browser_check.py`，通过 `--base`、`--ca`、`--output` 指定本地 issuer、CA 和受保护输出文件；在独立浏览器打开输出文件中的授权 URL，登录并同意后，回跳接收器验证 state 与兑换结果。它只监听回环地址，不打印令牌，不替代自动验收。

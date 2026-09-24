@@ -4,6 +4,9 @@ import com.mars.cloud.security.jwt.IdentityTokenValidator;
 import com.mars.cloud.security.servlet.MarsServletSecurityConfigurer;
 import com.mars.cloud.service.auth.application.*;
 import com.mars.cloud.service.auth.domain.ClientPolicy;
+import com.mars.cloud.service.auth.infrastructure.sms.SmsAuthenticationFilter;
+import com.mars.cloud.service.auth.application.SmsLoginService;
+import com.mars.cloud.service.auth.interfaces.SmsOrigin;
 import com.mars.cloud.service.auth.infrastructure.authorization.AtomicCodeAuthenticationProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
@@ -88,12 +91,16 @@ public class AuthorizationServerConfiguration {
     }
     @Bean @Order(3)
     SecurityFilterChain loginSecurity(HttpSecurity http,AuthProperties properties,AuthenticationManager localLoginManager,
-            AuthSessionService sessions) throws Exception {
-        http.securityMatcher("/login","/login/consent","/logout").authenticationManager(localLoginManager);
+            AuthSessionService sessions,SmsLoginService sms,SmsOrigin origin) throws Exception {
+        http.securityMatcher("/login","/login/**","/logout").authenticationManager(localLoginManager);
+        var csrf=new org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository();
+        http.csrf(config -> config.csrfTokenRepository(csrf));
+        http.addFilterBefore(new SmsAuthenticationFilter(sms,origin,sessions,csrf),
+                org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
         http.authorizeHttpRequests(requests -> requests.anyRequest().permitAll());
         if (properties.getLocalLogin().isEnabled()) {
             var success=new SavedRequestAwareAuthenticationSuccessHandler();
-            http.formLogin(form -> form.successHandler((request,response,authentication) -> {
+            http.formLogin(form -> form.loginPage("/login").loginProcessingUrl("/login").successHandler((request,response,authentication) -> {
                 try {
                     sessions.login(authentication.getName(),request);
                     success.onAuthenticationSuccess(request,response,authentication);

@@ -21,7 +21,7 @@ public final class AccountService {
         this.jdbc=jdbc; this.transaction=new TransactionTemplate(manager); this.clock=clock;
     }
     public long registerVerifiedPhone(String phone) {
-        validatePhone(phone);
+        canonicalPhone(phone);
         try {
             return Objects.requireNonNull(transaction.execute(status -> {
                 List<Long> existing=identity(phone);
@@ -37,7 +37,7 @@ public final class AccountService {
         }
     }
     public void rebindVerifiedPhone(long id,String oldPhone,String newPhone) {
-        validatePhone(oldPhone); validatePhone(newPhone);
+        canonicalPhone(oldPhone); canonicalPhone(newPhone);
         transaction.executeWithoutResult(status -> {
             jdbc.queryForObject("SELECT user_id FROM sys_user WHERE user_id=? AND status='ACTIVE' FOR UPDATE",Long.class,id);
             requirePhone(id,oldPhone);
@@ -62,7 +62,8 @@ public final class AccountService {
     public void audit(long id,String event) {
         jdbc.update("INSERT INTO sys_login_log (log_id,user_id,event,result,channel,created_at) VALUES (?,?,?,'SUCCESS','SMS',?)",IdWorker.getId(),id,event,Timestamp.from(clock.instant()));
     }
-    private static void validatePhone(String phone) {
+    public static String canonicalPhone(String phone) {
         if (phone==null || !phone.matches("\\+[1-9][0-9]{1,14}")) throw new IllegalArgumentException("A canonical E.164 phone is required");
+        return phone;
     }
 }

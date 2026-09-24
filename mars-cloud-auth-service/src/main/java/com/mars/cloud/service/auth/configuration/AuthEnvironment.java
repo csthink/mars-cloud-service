@@ -32,6 +32,16 @@ public final class AuthEnvironment {
             throw new IllegalStateException("Forwarded headers must remain disabled until a trusted proxy is configured");
         if (properties.getLocalLogin().isEnabled() && !local)
             throw new IllegalStateException("Local login is restricted to local/test profiles");
+        var sms = properties.getSms();
+        if (sms.getDailyBudget() <= 0 || sms.getCaptchaErrorThreshold() <= 0 || sms.getCaptchaErrorThreshold() > 5)
+            throw new IllegalStateException("SMS limits must be positive and within the challenge attempt limit");
+        if (sms.isMockEnabled() && (!local || sms.getMockOutbox() == null || sms.getMockOutbox().isBlank()))
+            throw new IllegalStateException("Mock SMS requires local/test and an explicit outbox");
+        if (sms.isMockEnabled() || (sms.getHmacKey() != null && !sms.getHmacKey().isBlank())) {
+            try {
+                if (Base64.getDecoder().decode(sms.getHmacKey()).length != 32) throw new IllegalArgumentException();
+            } catch (RuntimeException ex) { throw new IllegalStateException("SMS requires a separate 256-bit HMAC key"); }
+        }
         try {
             if (Base64.getDecoder().decode(properties.getJwk().getEncryptionKey()).length != 32)
                 throw new IllegalArgumentException();

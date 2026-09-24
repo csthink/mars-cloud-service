@@ -39,9 +39,13 @@ def main():
         base=f'http://127.0.0.1:{args.callback_port}' if client in {'csthink-assistant','test-browser','test-native'} else 'https://'+client+'.example'
         lines.extend(['      '+client+':','        redirect-uris: ["'+base+'/callback"]','        post-logout-redirect-uris: ["'+base+'/logged-out"]'])
     protected(state/'clients.yml','\n'.join(lines)+'\n')
+    outbox=state/'sms-outbox.txt'
+    protected(outbox,'')
     env=dict(SERVER_PORT=str(args.port),SERVER_ADDRESS='127.0.0.1',SPRING_PROFILES_ACTIVE='local',
         MARS_AUTH_ISSUER=f'https://127.0.0.1:{args.port}',MARS_AUTH_JWK_ENCRYPTION_KEY=base64.b64encode(secrets.token_bytes(32)).decode(),
         MARS_AUTH_JWK_ENCRYPTION_KEY_ID='local-v1',MARS_AUTH_LOCAL_LOGIN_ENABLED='true',
+        MARS_AUTH_SMS_HMAC_KEY=base64.b64encode(secrets.token_bytes(32)).decode(),
+        MARS_AUTH_SMS_MOCK_ENABLED='true',MARS_AUTH_SMS_MOCK_OUTBOX=str(outbox),
         MARS_AUTH_LOCAL_LOGIN_USER_ID=str(secrets.randbelow(10**17)+10**17),MARS_AUTH_LOCAL_LOGIN_PASSWORD=secrets.token_urlsafe(32),
         SERVER_SSL_ENABLED='true',SERVER_SSL_KEY_STORE=str(state/'server.p12'),SERVER_SSL_KEY_STORE_PASSWORD=password,
         SPRING_CLOUD_NACOS_DISCOVERY_SECURE='true',SPRING_CONFIG_ADDITIONAL_LOCATION='file:'+str(state/'clients.yml'),

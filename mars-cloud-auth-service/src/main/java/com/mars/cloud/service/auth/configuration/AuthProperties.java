@@ -10,11 +10,13 @@ public class AuthProperties {
     private String issuer;
     private final Jwk jwk = new Jwk();
     private final LocalLogin localLogin = new LocalLogin();
+    private final Sms sms = new Sms();
     private Map<String, Client> clients = new LinkedHashMap<>();
     public String getIssuer() { return issuer; }
     public void setIssuer(String value) { issuer = value; }
     public Jwk getJwk() { return jwk; }
     public LocalLogin getLocalLogin() { return localLogin; }
+    public Sms getSms() { return sms; }
     public Map<String, Client> getClients() { return clients; }
     public void setClients(Map<String, Client> value) { clients = value; }
     public static class Jwk {
@@ -35,6 +37,23 @@ public class AuthProperties {
         public void setUserId(String value) { userId = value; }
         public String getPassword() { return password; }
         public void setPassword(String value) { password = value; }
+    }
+    public static class Sms {
+        private String hmacKey;
+        private boolean mockEnabled;
+        private String mockOutbox;
+        private int dailyBudget = 2000;
+        private int captchaErrorThreshold = 3;
+        public String getHmacKey() { return hmacKey; }
+        public void setHmacKey(String value) { hmacKey = value; }
+        public boolean isMockEnabled() { return mockEnabled; }
+        public void setMockEnabled(boolean value) { mockEnabled = value; }
+        public String getMockOutbox() { return mockOutbox; }
+        public void setMockOutbox(String value) { mockOutbox = value; }
+        public int getDailyBudget() { return dailyBudget; }
+        public void setDailyBudget(int value) { dailyBudget = value; }
+        public int getCaptchaErrorThreshold() { return captchaErrorThreshold; }
+        public void setCaptchaErrorThreshold(int value) { captchaErrorThreshold = value; }
     }
     public static class Client {
         private List<String> redirectUris = List.of();
