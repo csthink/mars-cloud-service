@@ -51,6 +51,7 @@ public final class DatabaseProbe {
         check(count("SELECT COUNT(*) FROM sys_user_identity WHERE user_id=? AND channel='SMS'",user)==1,"Rebind retains one current SMS identity");
         check(count("SELECT COUNT(*) FROM sys_user_identity WHERE subject=? AND channel='SMS'",phone)==0,"Old SMS identity is removed");
         check(count("SELECT COUNT(*) FROM sys_login_log WHERE user_id=? AND event='PHONE_REBOUND'",user)==1,"Successful rebind includes audit");
+        concurrentRebind(account);
         String definition=jdbc.queryForMap("SHOW CREATE TABLE sys_user_identity").get("Create Table").toString();
         scope="probe-"+UUID.randomUUID();
         identity(user,"EXAMPLE",scope,"subject",null);
@@ -68,7 +69,38 @@ public final class DatabaseProbe {
         jdbc.update("INSERT INTO sys_login_log(log_id,user_id,event,result,channel,created_at) VALUES(?,?,'PROBE','SUCCESS','EXAMPLE',UTC_TIMESTAMP(6))",IdWorker.getId(),user);
         check(definition.equals(jdbc.queryForMap("SHOW CREATE TABLE sys_user_identity").get("Create Table")),"New channel must not change table structure");
         check(count("SELECT COUNT(*) FROM sys_user_credential WHERE user_id IN (?,?)",user,other)==0,"SMS must not store a password credential");
-        System.out.println("PASS: MySQL concurrent registration, rollback, rebind audit, channel extension, full identity index, collation and input constraints");
+        System.out.println("PASS: MySQL concurrent registration and competing rebind, rollback, rebind audit, channel extension, full identity index, collation and input constraints");
+    }
+    private static void concurrentRebind(AccountService account) throws Exception {
+        String prefix="+998"+String.format("%010d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),10_000_000_000L));
+        String first=prefix+"1",second=prefix+"2",target=prefix+"3";
+        long firstUser=account.registerVerifiedPhone(first),secondUser=account.registerVerifiedPhone(second);
+        var ready=new CountDownLatch(2);var start=new CountDownLatch(1);
+        List<Boolean> outcomes;
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var a=executor.submit(() -> competeForPhone(account,firstUser,first,target,ready,start));
+            var b=executor.submit(() -> competeForPhone(account,secondUser,second,target,ready,start));
+            check(ready.await(10,java.util.concurrent.TimeUnit.SECONDS),"Both rebind workers must be ready");
+            start.countDown();
+            outcomes=List.of(a.get(30,java.util.concurrent.TimeUnit.SECONDS),b.get(30,java.util.concurrent.TimeUnit.SECONDS));
+        }
+        check(outcomes.stream().filter(Boolean::booleanValue).count()==1,"Exactly one competing rebind succeeds");
+        long winner=outcomes.getFirst()?firstUser:secondUser,loser=outcomes.getFirst()?secondUser:firstUser;
+        String winnerOld=outcomes.getFirst()?first:second,loserOld=outcomes.getFirst()?second:first;
+        check(target.equals(jdbc.queryForObject("SELECT phone FROM sys_user WHERE user_id=?",String.class,winner)),"Winning account owns new phone");
+        check(loserOld.equals(jdbc.queryForObject("SELECT phone FROM sys_user WHERE user_id=?",String.class,loser)),"Losing account retains old phone");
+        check(count("SELECT COUNT(*) FROM sys_user_identity WHERE channel='SMS' AND identity_scope='e164' AND user_id=? AND subject=?",winner,target)==1,"Winning SMS identity commits");
+        check(count("SELECT COUNT(*) FROM sys_user_identity WHERE channel='SMS' AND identity_scope='e164' AND user_id=? AND subject=?",loser,loserOld)==1,"Losing SMS identity rolls back");
+        check(count("SELECT COUNT(*) FROM sys_user_identity WHERE channel='SMS' AND identity_scope='e164' AND subject=?",winnerOld)==0,"Winning old identity is removed");
+        check(count("SELECT COUNT(*) FROM sys_user_identity WHERE channel='SMS' AND user_id IN (?,?)",winner,loser)==2,"Concurrent rebind leaves one identity per account");
+        check(count("SELECT COUNT(*) FROM sys_login_log WHERE user_id=? AND event='PHONE_REBOUND'",winner)==1,"Winning rebind audit commits once");
+        check(count("SELECT COUNT(*) FROM sys_login_log WHERE user_id=? AND event='PHONE_REBOUND'",loser)==0,"Losing rebind audit rolls back");
+        check(account.registerVerifiedPhone(target)==winner,"Subsequent verified login resolves the winning account");
+    }
+    private static boolean competeForPhone(AccountService account,long user,String oldPhone,String newPhone,CountDownLatch ready,CountDownLatch start) throws Exception {
+        ready.countDown();start.await();
+        try {account.rebindVerifiedPhone(user,oldPhone,newPhone);return true;}
+        catch(DataIntegrityViolationException conflict) {return false;}
     }
     private static void identity(long user,String channel,String identityScope,String subject,String attributes) {
         jdbc.update("INSERT INTO sys_user_identity(identity_id,user_id,channel,identity_scope,subject,attributes,verified_at,created_at,updated_at) VALUES(?,?,?,?,?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))",IdWorker.getId(),user,channel,identityScope,subject,attributes);
