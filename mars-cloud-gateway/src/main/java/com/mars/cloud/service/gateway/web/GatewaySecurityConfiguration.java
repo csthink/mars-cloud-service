@@ -1,7 +1,11 @@
 package com.mars.cloud.service.gateway.web;
 
 import com.mars.cloud.security.reactive.MarsReactiveSecurityConfigurer;
+import com.mars.cloud.security.reactive.ReactiveSecurityErrors;
+import com.mars.cloud.service.gateway.security.GatewaySessionRevocation;
+import com.github.benmanes.caffeine.cache.Ticker;
 import java.util.List;
+import org.springframework.boot.webflux.error.ErrorWebExceptionHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -10,9 +14,12 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.server.PathContainer;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.context.NoOpServerSecurityContextRepository;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
@@ -27,17 +34,24 @@ public class GatewaySecurityConfiguration {
     private static final List<PathPattern> LOCAL_API_PATHS = patterns("/upms/**", "/sample/**");
 
     @Bean
+    GatewaySessionRevocation gatewaySessionRevocation(ReactiveStringRedisTemplate redis) {
+        return new GatewaySessionRevocation(redis, Ticker.systemTicker());
+    }
+
+    @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 200)
     SecurityWebFilterChain gatewaySecurityWebFilterChain(ServerHttpSecurity http,
                                                           MarsReactiveSecurityConfigurer configurer,
+                                                          GatewaySessionRevocation revocation,
+                                                          ReactiveSecurityErrors securityErrors,
+                                                          ErrorWebExceptionHandler gatewayErrors,
                                                           Environment environment) {
         boolean localTest = GatewayHostPolicy.isLocalTest(environment);
         ServerWebExchangeMatcher routedRequest = exchange -> {
             var request = exchange.getRequest();
             PathContainer path = request.getPath().pathWithinApplication();
             boolean issuer = GatewayHostPolicy.isAuthHost(request, localTest) && matches(ISSUER_PATHS, path);
-            boolean api = GatewayHostPolicy.isApiHost(request, localTest)
-                    && (matches(API_PATHS, path) || (localTest && matches(LOCAL_API_PATHS, path)));
+            boolean api = isApiRequest(request, path, localTest);
             return issuer || api ? ServerWebExchangeMatcher.MatchResult.match()
                     : ServerWebExchangeMatcher.MatchResult.notMatch();
         };
@@ -54,8 +68,16 @@ public class GatewaySecurityConfiguration {
                                 "/notice/v1/me", "/notice/v1/me/**", "/notice/v1/admin", "/notice/v1/admin/**")
                         .authenticated()
                         .pathMatchers(HttpMethod.GET, "/product/**", "/notice/**").permitAll()
-                        .anyExchange().authenticated());
+                        .anyExchange().authenticated())
+                .addFilterBefore(new GatewaySessionRevocationWebFilter(
+                        request -> isApiRequest(request, request.getPath().pathWithinApplication(), localTest),
+                        revocation, securityErrors, gatewayErrors), SecurityWebFiltersOrder.AUTHORIZATION);
         return configurer.configure(http).build();
+    }
+
+    private static boolean isApiRequest(ServerHttpRequest request, PathContainer path, boolean localTest) {
+        return GatewayHostPolicy.isApiHost(request, localTest)
+                && (matches(API_PATHS, path) || (localTest && matches(LOCAL_API_PATHS, path)));
     }
 
     private static List<PathPattern> patterns(String... values) {

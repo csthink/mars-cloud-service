@@ -13,8 +13,14 @@ start_security_test_issuer() {
     echo "Cannot resolve the test issuer classpath; build the modules in the selected Maven repository first." >&2
     return 1
   fi
-  java --enable-native-access=ALL-UNNAMED -cp "$(cat "$SECURITY_TEST_DIR/classpath")" \
-      com.mars.cloud.security.test.TestIdentityProviderProcess "$SECURITY_TEST_DIR" >"$SECURITY_TEST_DIR/issuer.log" 2>&1 &
+  local sample_test_classes="$repository/mars-cloud-sample-service/target/test-classes"
+  if [ ! -d "$sample_test_classes" ]; then
+    echo "Build mars-cloud-sample-service test classes before running acceptance tests." >&2
+    return 1
+  fi
+  java --enable-native-access=ALL-UNNAMED -cp "$sample_test_classes:$(cat "$SECURITY_TEST_DIR/classpath")" \
+      com.mars.cloud.service.sample.test.SessionAwareTestIdentityProviderProcess \
+      "$SECURITY_TEST_DIR" >"$SECURITY_TEST_DIR/issuer.log" 2>&1 &
   SECURITY_ISSUER_PID=$!
   local attempts=0
   while [ ! -f "$SECURITY_TEST_DIR/ready" ] && [ "$attempts" -lt 100 ]; do

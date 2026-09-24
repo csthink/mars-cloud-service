@@ -28,6 +28,9 @@ public enum GatewayErrorCode implements ErrorCode {
     /** 连接已建立，但目标服务在规定时间内没有返回响应。 */
     UPSTREAM_TIMEOUT(63004, HttpStatus.GATEWAY_TIMEOUT),
 
+    /** 撤销记录无法读取，且没有未过期的本地缓存。 */
+    REVOCATION_STORE_UNAVAILABLE(63005, HttpStatus.SERVICE_UNAVAILABLE),
+
     /** 请求被 Sentinel 按路由、API 分组或客户端地址的限流规则拒绝。 */
     RATE_LIMITED(63006, HttpStatus.TOO_MANY_REQUESTS);
 

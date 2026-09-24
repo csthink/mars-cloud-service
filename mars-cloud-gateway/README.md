@@ -29,6 +29,8 @@
 
 认证 Host 的签发方端点清单允许不带访问令牌。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。
 
+对 API 请求中已验证的 Bearer 令牌，网关要求合法的 `sid` 声明，并通过响应式 Redis 读取会话撤销状态。已撤销或 `sid` 无效时返回 `62002/401`；撤销状态最多缓存 5 秒。Redis 不可用且没有未过期缓存时返回 `63005/503`，请求不会转发给业务服务。匿名公开读取和认证 Host 的签发方端点无需查询 Redis。Redis 地址与库号由标准 `SPRING_DATA_REDIS_*` 环境变量提供；管理端口的健康检查包含 Redis 状态。
+
 API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为 `https://flippoabc.com`、`https://word.flippoabc.com`、`https://console.flippoabc.com`；允许 GET、POST、PUT、PATCH、DELETE、OPTIONS，以及 Authorization、Content-Type、Accept、Idempotency-Key 请求头。未列入的来源被拒绝，不提供凭据型跨域许可。local / test 如需浏览器开发服务器跨域，用 `MARS_GATEWAY_CORS_LOCAL_ORIGINS` 提供以逗号分隔的完整回环 origin，例如 `http://127.0.0.1:5173`；正式环境不接受该配置。认证域名及 `/userinfo` 不提供跨域许可。
 
 ## 来源地址与请求头
@@ -79,6 +81,7 @@ python3 sentinel-rules.py --env-file .env publish
 | 目标服务在注册中心里没有可用实例 | 网关 | 503 | `success:false`、`code:"63002"` |
 | 已选中实例但连接失败（拒绝连接、主机名解析失败） | 网关 | 502 | `success:false`、`code:"63003"` |
 | 连接已建立但目标服务在规定时间内未响应 | 网关 | 504 | `success:false`、`code:"63004"` |
+| 无法读取会话撤销状态且没有有效缓存 | 网关 | 503 | `success:false`、`code:"63005"` |
 | 请求被限流规则拒绝（见「限流」） | 网关 | 429 | `success:false`、`code:"63006"` |
 | 其他无法归类的异常 | 网关 | 对应状态 | `code` 为 HTTP 状态码本身（如 `"500"`），与业务服务的兜底约定一致 |
 
@@ -148,6 +151,8 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
 `verify-e2e.sh` 用**真进程**验证打包出来的 jar：先起网关、后起 UPMS，逐条核对上表承诺的行为，
 包括「网关先于业务服务启动，业务服务上线后网关自动发现」这条启动顺序约定。
 
+`verify-revocation-e2e.sh` 使用打包后的网关、`dev/images.lock.json` 指定的独立 Redis 容器与本地 HTTP 上游，核对会话撤销、无效 `sid`、Redis 停止后的 `63005/503` 和恢复。运行前需打包 gateway 与 sample 模块，并在本机准备已锁定的 Redis 镜像；脚本使用 `local,test` profile，不连接 Nacos，也不停止共用中间件。
+
 ```bash
 mvn -f .. package                 # 网关与 UPMS 都需要 package
 ./verify-e2e.sh                   # 需要本机 Nacos 与本目录的 .env
@@ -183,7 +188,7 @@ mvn -f .. package -pl mars-cloud-gateway -am
 ## 依赖边界
 
 - 直接依赖框架仓的 `mars-cloud-common`（信封与错误码契约）、`mars-cloud-nacos-spring-boot-starter`、
-  `mars-cloud-observability-spring-boot-starter` 与 `mars-cloud-security-spring-boot-starter`；管理端点认证还需要 `spring-boot-starter-security`
+  `mars-cloud-observability-spring-boot-starter` 与 `mars-cloud-security-spring-boot-starter`；管理端点认证使用 `spring-boot-starter-security`，会话撤销查询使用 `spring-boot-starter-data-redis`
   **不引入** Servlet 栈的 `mars-cloud-mvc-spring-boot-starter`——它的统一响应、异常处理与错误码校验都是 Servlet 实现，
   网关在 `web` 包里为响应式栈单独实现了同一契约
 - 错误码区间的启动期校验器也在 mvc starter 里，网关引不了，改由 `GatewayErrorCodeTest` 守住区间与 i18n 完整性

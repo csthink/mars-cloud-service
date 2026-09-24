@@ -2,6 +2,7 @@ package com.mars.cloud.service.gateway.web;
 
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.mars.cloud.service.gateway.error.GatewayErrorCode;
+import com.mars.cloud.service.gateway.security.GatewaySessionRevocation;
 import org.springframework.cloud.gateway.support.NotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeoutException;
  *
  * <p>映射规则（按判断顺序）：
  * <ol>
+ *   <li>撤销状态 Redis 查询失败且没有有效缓存：{@link GatewayErrorCode#REVOCATION_STORE_UNAVAILABLE}。</li>
  *   <li>Sentinel 的拦截异常（{@link BlockException#isBlockException} 为真，含包装）：
  *       {@link GatewayErrorCode#RATE_LIMITED}，状态 429。</li>
  *   <li>{@link NotFoundException}：负载均衡找不到实例 → {@link GatewayErrorCode#UPSTREAM_NO_INSTANCE}。
@@ -34,6 +36,9 @@ import java.util.concurrent.TimeoutException;
 public final class ErrorEnvelopeResolver {
 
     public ResolvedError resolve(Throwable ex) {
+        if (ex instanceof GatewaySessionRevocation.StoreUnavailableException) {
+            return ResolvedError.of(GatewayErrorCode.REVOCATION_STORE_UNAVAILABLE, ex.getMessage());
+        }
         if (BlockException.isBlockException(ex)) {
             return ResolvedError.of(GatewayErrorCode.RATE_LIMITED, "被 Sentinel 规则拦截：" + blockedBy(ex));
         }

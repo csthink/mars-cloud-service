@@ -3,6 +3,7 @@ package com.mars.cloud.service.gateway.web;
 import com.alibaba.csp.sentinel.slots.block.flow.FlowException;
 import com.alibaba.csp.sentinel.slots.block.flow.param.ParamFlowException;
 import com.mars.cloud.service.gateway.error.GatewayErrorCode;
+import com.mars.cloud.service.gateway.security.GatewaySessionRevocation;
 import io.netty.channel.ConnectTimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.gateway.support.NotFoundException;
@@ -97,6 +98,13 @@ class ErrorEnvelopeResolverTest {
 
         assertThat(resolved.status()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
         assertThat(resolved.code()).isEqualTo(GatewayErrorCode.UPSTREAM_TIMEOUT.getCode());
+    }
+
+    @Test
+    void unavailableRevocationStoreMapsToGateway503() {
+        ResolvedError resolved = resolver.resolve(new GatewaySessionRevocation.StoreUnavailableException());
+        assertThat(resolved.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(resolved.code()).isEqualTo(GatewayErrorCode.REVOCATION_STORE_UNAVAILABLE.getCode());
     }
 
     @Test
