@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {"management.server.port=0", "mars.observability.management.username=ops",
                 "mars.observability.management.password=test-password",
                 "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://127.0.0.1:1",
-                "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:1/keys"})
+                "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:1/keys",
+                "logging.level.com.mars.cloud.service.gateway.web.EnvelopeErrorWebExceptionHandler=ERROR"})
 @ActiveProfiles({"local", "test", "security-integration"})
 class GatewayManagementSecurityTest {
     @LocalServerPort int businessPort;

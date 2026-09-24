@@ -22,7 +22,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Exercises the deployed Gateway security chain through its HTTP listener and routed upstream. */
-@SpringBootTest(classes = GatewayApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(classes = GatewayApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "logging.level.com.mars.cloud.service.gateway.web.EnvelopeErrorWebExceptionHandler=ERROR")
 @ActiveProfiles({"local", "test", "security-integration"})
 @AutoConfigureWebTestClient
 class GatewayJwtRoutingTest {
