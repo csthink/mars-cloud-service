@@ -45,11 +45,15 @@ class GatewayRoutingContractTest {
         // 断言判定的完整描述而不是子串：给某条路由偷偷再加一个判定（Header、Method 等）也会让这里失败。
         // 描述里带一个路由定位器包装的 lambda，它的名字含每次运行都不同的地址，先归一化再比较。
         assertThat(predicateOf(routes, "auth-issuer"))
-                .contains("Hosts: [auth.flippoabc.com", "Paths: [/oauth2/**");
-        assertThat(predicateOf(routes, "auth-api")).contains("Paths: [/auth/**");
-        assertThat(predicateOf(routes, "product")).contains("Paths: [/product/**");
-        assertThat(predicateOf(routes, "order")).contains("Paths: [/order/**");
-        assertThat(predicateOf(routes, "notice")).contains("Paths: [/notice/**");
+                .isEqualTo("(<locator> && Paths: [/oauth2/**, /.well-known/**, /login, /login/**, /logout, /connect/logout, /userinfo], match trailing slash: true)");
+        assertThat(predicateOf(routes, "auth-api"))
+                .isEqualTo("(<locator> && Paths: [/auth/**], match trailing slash: true)");
+        assertThat(predicateOf(routes, "product"))
+                .isEqualTo("(<locator> && Paths: [/product/**], match trailing slash: true)");
+        assertThat(predicateOf(routes, "order"))
+                .isEqualTo("(<locator> && Paths: [/order/**], match trailing slash: true)");
+        assertThat(predicateOf(routes, "notice"))
+                .isEqualTo("(<locator> && Paths: [/notice/**], match trailing slash: true)");
         assertThat(predicateOf(routes, "upms"))
                 .isEqualTo("(<locator> && Paths: [/upms/**], match trailing slash: true)");
         assertThat(predicateOf(routes, "sample"))

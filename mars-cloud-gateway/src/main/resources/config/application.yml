@@ -17,11 +17,10 @@ spring:
           # 路由显式声明，不开 discovery.locator：系统外部请求统一经过 gateway，
           # 注册中心里的每个服务不应自动暴露到公网。
           routes:
-            # 签发方端点只接受认证域名；登录页资源限于 /login/**。
+            # 签发方路径只在过滤器核对认证 Host 后转发；登录页资源限于 /login/**。
             - id: auth-issuer
               uri: lb://mars-cloud-auth-service
               predicates:
-                - Host=auth.flippoabc.com,127.0.0.1,localhost,[::1]
                 - Path=/oauth2/**,/.well-known/**,/login,/login/**,/logout,/connect/logout,/userinfo
               filters:
                 - PreserveHostHeader

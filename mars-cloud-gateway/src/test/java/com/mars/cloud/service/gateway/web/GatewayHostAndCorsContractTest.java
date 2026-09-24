@@ -4,6 +4,7 @@ import com.mars.cloud.service.gateway.GatewayApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -21,6 +22,9 @@ class GatewayHostAndCorsContractTest {
 
     @Autowired
     private WebTestClient client;
+
+    @LocalServerPort
+    private int port;
 
     @Test
     void apiHostRoutesToUnavailableServiceButAuthHostCannotReachBusinessApi() {
@@ -41,6 +45,19 @@ class GatewayHostAndCorsContractTest {
                 .expectStatus().isEqualTo(503)
                 .expectBody().jsonPath("$.code").isEqualTo("63002");
         client.get().uri("/login").header("Host", "api.flippoabc.com").exchange()
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.code").isEqualTo("63001");
+    }
+
+    @Test
+    void issuerAcceptsCaseInsensitiveHostWithHttpsPortAndLocalListeningPort() {
+        client.get().uri("/login").header("Host", "AUTH.FLIPPOABC.COM:443").exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody().jsonPath("$.code").isEqualTo("63002");
+        client.get().uri("/login").header("Host", "localhost:" + port).exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody().jsonPath("$.code").isEqualTo("63002");
+        client.get().uri("/login").header("Host", "auth.flippoabc.com:8443").exchange()
                 .expectStatus().isNotFound()
                 .expectBody().jsonPath("$.code").isEqualTo("63001");
     }

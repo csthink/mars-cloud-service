@@ -154,6 +154,14 @@ contains "认证 Host 业务 API 错误码" '"code":"63001"' "$body"
 body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/login" -H 'Host: auth.flippoabc.com')
 check "认证 Host 的登录路由已匹配，目标无实例" "503" "$(printf '%s' "$body" | tail -1)"
 contains "登录路由无实例错误码" '"code":"63002"' "$body"
+check "认证 Host 大写与 HTTPS 端口匹配" "503" \
+  "$(status_of "$GATEWAY/login" -H 'Host: AUTH.FLIPPOABC.COM:443')"
+check "认证 Host 本地监听端口匹配" "503" \
+  "$(status_of "$GATEWAY/login" -H "Host: localhost:$GATEWAY_PORT")"
+check "认证 Host 非 HTTPS 端口被拒" "404" \
+  "$(status_of "$GATEWAY/login" -H 'Host: auth.flippoabc.com:8443')"
+check "API Host 空端口被拒" "400" \
+  "$(status_of "$GATEWAY/product/v1/catalog" -H 'Host: api.flippoabc.com:')"
 check "未知 Host 被拒绝" "404" "$(status_of "$GATEWAY/product/v1/catalog" -H 'Host: other.flippoabc.com')"
 
 echo

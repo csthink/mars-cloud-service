@@ -52,7 +52,7 @@ final class GatewayHostPolicy {
             return null;
         }
         String raw = values.getFirst();
-        if (raw == null || raw.isBlank() || raw.chars().anyMatch(c -> Character.isWhitespace(c)
+        if (raw == null || raw.isBlank() || raw.endsWith(":") || raw.chars().anyMatch(c -> Character.isWhitespace(c)
                 || c == ',' || c == '/' || c == '@' || c == '?' || c == '#' || c == '%')) {
             return null;
         }
