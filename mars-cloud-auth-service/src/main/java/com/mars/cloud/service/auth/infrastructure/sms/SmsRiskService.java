@@ -35,7 +35,10 @@ public final class SmsRiskService {
         end
         budget = redis.call('INCR', KEYS[5])
         redis.call('EXPIREAT', KEYS[5], tonumber(ARGV[5]))
-        if budget >= tonumber(ARGV[3]) then redis.call('SET', KEYS[6], '1') end
+        if budget >= tonumber(ARGV[3]) then
+          redis.call('SET', KEYS[6], '1')
+          return 3
+        end
         return 0
         """;
     private static final String CAPTCHA_RATE = """
@@ -69,12 +72,13 @@ public final class SmsRiskService {
                 "mars:auth:sms:budget:"+today,"mars:auth:sms:budget:paused");
         long result=redis.run(RESERVE,keys,Long.toString(now),SmsCrypto.randomId(),
                 Integer.toString(properties.getSms().getDailyBudget()),captchaPassed?"1":"0",Long.toString(midnight+86400));
-        if (result==4) {
+        if (result==3 || result==4) {
             Boolean first=redis.template().opsForValue().setIfAbsent("mars:auth:sms:budget:alert",today.toString());
             if (Boolean.TRUE.equals(first)) LOG.warn("SMS daily budget paused");
         }
         return switch ((int)result) {
             case 0 -> Reservation.OK;
+            case 3 -> Reservation.OK;
             case 1 -> Reservation.LIMITED;
             case 2 -> Reservation.CAPTCHA_REQUIRED;
             case 4 -> Reservation.PAUSED;

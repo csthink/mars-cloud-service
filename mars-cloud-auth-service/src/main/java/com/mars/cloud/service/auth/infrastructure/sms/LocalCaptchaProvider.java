@@ -2,6 +2,8 @@ package com.mars.cloud.service.auth.infrastructure.sms;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -64,27 +66,49 @@ public final class LocalCaptchaProvider implements CaptchaProvider {
         } catch (java.io.IOException ex) { throw new IllegalStateException("Cannot load captcha font",ex); }
     }
     private byte[] render(String answer) {
-        BufferedImage image=new BufferedImage(180,64,BufferedImage.TYPE_INT_RGB);
+        BufferedImage image=new BufferedImage(200,74,BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics=image.createGraphics();
-        graphics.setColor(new Color(246,248,250)); graphics.fillRect(0,0,180,64);
+        graphics.setColor(new Color(246,248,250)); graphics.fillRect(0,0,200,74);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        interference(graphics,200,74,12,2);
         for (int i=0;i<5;i++) {
-            String[] rows=glyphs.get(answer.charAt(i)); int x=8+i*34, y=8+SmsCrypto.random(7);
-            graphics.setColor(new Color(25+SmsCrypto.random(80),35+SmsCrypto.random(80),50+SmsCrypto.random(80)));
+            String[] rows=glyphs.get(answer.charAt(i));
+            BufferedImage glyph=new BufferedImage(25,42,BufferedImage.TYPE_INT_ARGB);
+            Graphics2D letter=glyph.createGraphics();
+            letter.setColor(ink());
             for (int row=0;row<7;row++) for (int col=0;col<5;col++)
-                if (rows[row].charAt(col)=='1') graphics.fillRect(x+col*5,y+row*6,5,6);
+                if (rows[row].charAt(col)=='1') letter.fillRect(col*5,row*6,5,6);
+            letter.dispose();
+            int x=12+i*36+SmsCrypto.random(9)-4, y=16+SmsCrypto.random(11)-5;
+            AffineTransform transform=new AffineTransform();
+            transform.translate(x+12,y+21);
+            transform.rotate((SmsCrypto.random(51)-25)*Math.PI/180);
+            transform.scale((85+SmsCrypto.random(31))/100.0,(85+SmsCrypto.random(31))/100.0);
+            transform.translate(-12,-21);
+            graphics.drawImage(glyph,transform,null);
         }
-        for (int i=0;i<130;i++) {
-            graphics.setColor(new Color(110+SmsCrypto.random(130),110+SmsCrypto.random(130),110+SmsCrypto.random(130)));
-            graphics.fillRect(SmsCrypto.random(180),SmsCrypto.random(64),1+SmsCrypto.random(3),1+SmsCrypto.random(3));
-        }
-        for (int i=0;i<4;i++) {
-            graphics.setColor(new Color(120+SmsCrypto.random(100),120+SmsCrypto.random(100),120+SmsCrypto.random(100)));
-            graphics.drawLine(SmsCrypto.random(180),SmsCrypto.random(64),SmsCrypto.random(180),SmsCrypto.random(64));
-        }
+        interference(graphics,200,74,14,3);
         graphics.dispose();
         try {
             ByteArrayOutputStream output=new ByteArrayOutputStream();
             ImageIO.write(image,"png",output); return output.toByteArray();
         } catch (java.io.IOException ex) { throw new IllegalStateException("Cannot render captcha",ex); }
+    }
+    private static Color ink() {
+        int shade=35+SmsCrypto.random(76);
+        return new Color(shade,shade+SmsCrypto.random(13),shade+SmsCrypto.random(13));
+    }
+    private static void interference(Graphics2D graphics,int width,int height,int strokes,int lines) {
+        for (int i=0;i<strokes;i++) {
+            graphics.setColor(ink());
+            int x=SmsCrypto.random(width), y=SmsCrypto.random(height);
+            graphics.fillRect(x,y,2+SmsCrypto.random(5),2+SmsCrypto.random(5));
+        }
+        for (int i=0;i<lines;i++) {
+            graphics.setColor(ink());
+            int x=SmsCrypto.random(width), y=SmsCrypto.random(height);
+            graphics.drawLine(x,y,Math.max(0,Math.min(width-1,x+SmsCrypto.random(51)-25)),
+                    Math.max(0,Math.min(height-1,y+SmsCrypto.random(31)-15)));
+        }
     }
 }

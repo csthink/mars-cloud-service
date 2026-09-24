@@ -130,10 +130,18 @@ public final class SmsRiskProbe {
             check(risk.verificationCaptchaRequired(phone,session),"Third wrong code must require captcha");
             String paused="mars:auth:sms:budget:paused", alert="mars:auth:sms:budget:alert";
             check(!Boolean.TRUE.equals(template.hasKey(paused)),"Probe requires an unpaused isolated Redis database");
-            String budgetDate=date.plusDays(1).toString(), nextDate=date.plusDays(2).toString();
+            String exhaustionDate=date.plusDays(1).toString();
+            String budgetDate=date.plusDays(2).toString(), nextDate=date.plusDays(3).toString();
             try {
-                properties.getSms().setDailyBudget(2);
+                properties.getSms().setDailyBudget(1);
                 clock.set(date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
+                check(risk.reserve(phone+"final","probe-final-"+suffix,true)==SmsRiskService.Reservation.OK,
+                        "Final budget slot must still be sent");
+                check(Boolean.TRUE.equals(template.hasKey(paused)) && Boolean.TRUE.equals(template.hasKey(alert)),
+                        "Final allowed reservation must pause and alert immediately");
+                template.delete(List.of(paused,alert,"mars:auth:sms:budget:"+exhaustionDate));
+                properties.getSms().setDailyBudget(2);
+                clock.set(date.plusDays(2).atStartOfDay(ZoneOffset.UTC).toInstant());
                 var budgetStart=new CountDownLatch(1);
                 try (var workers=Executors.newFixedThreadPool(3)) {
                     var results=new java.util.ArrayList<java.util.concurrent.Future<SmsRiskService.Reservation>>();
@@ -148,10 +156,11 @@ public final class SmsRiskProbe {
                     }
                     check(allowed==2 && denied==1,"Concurrent budget must allow only two sends");
                 }
-                clock.set(date.plusDays(2).atStartOfDay(ZoneOffset.UTC).toInstant());
+                clock.set(date.plusDays(3).atStartOfDay(ZoneOffset.UTC).toInstant());
                 check(risk.reserve(phone+"3","probe-budget-"+suffix+"-3",true)==SmsRiskService.Reservation.PAUSED,"Pause survives UTC rollover");
             } finally {
-                template.delete(List.of(paused,alert,"mars:auth:sms:budget:"+budgetDate,
+                template.delete(List.of(paused,alert,"mars:auth:sms:budget:"+exhaustionDate,
+                        "mars:auth:sms:budget:"+budgetDate,
                         "mars:auth:sms:budget:"+nextDate,"mars:auth:sms:budget:"+date));
             }
             System.out.println("PASS: SMS code replacement, binding, expiry, five attempts, atomic consumption, captcha use, phone and IP limits, budget pause");
