@@ -125,6 +125,14 @@ PY
   echo "ok $label"
 }
 upstream_count() { wc -l <"$WORK_DIR/upstream.log" | tr -d ' '; }
+assert_within_five_seconds() {
+  python3 - "$1" "$2" <<'PY'
+import sys, time
+elapsed = time.monotonic() - float(sys.argv[1])
+if elapsed > 5:
+    raise SystemExit(f'{sys.argv[2]} took {elapsed:.2f}s, expected at most 5s')
+PY
+}
 
 expect "unrevoked session" /auth/v1/me allow api.flippoabc.com 200 none
 sid="$(python3 - "$SECURITY_TEST_DIR/allow.token" <<'PY'
@@ -144,10 +152,14 @@ if [ "$(upstream_count)" != "$before" ]; then echo "Rejected requests reached th
 expect "second session before Redis stop" /auth/v1/me admin api.flippoabc.com 200 none
 docker stop --time 1 "$REDIS_CONTAINER" >/dev/null
 sleep 6
+started="$(python3 -c 'import time; print(time.monotonic())')"
 expect "Redis unavailable after cache expiry" /auth/v1/me admin api.flippoabc.com 503 63005
+assert_within_five_seconds "$started" "Redis failure response"
 expect "issuer route while Redis unavailable" /login none auth.flippoabc.com 200 none
 docker start "$REDIS_CONTAINER" >/dev/null
 wait_for_redis
+started="$(python3 -c 'import time; print(time.monotonic())')"
 expect "Redis recovered" /auth/v1/me admin api.flippoabc.com 200 none
+assert_within_five_seconds "$started" "Redis recovery response"
 verify_no_test_credentials "$WORK_DIR/gateway.log" "$WORK_DIR/upstream.log"
 echo "Gateway revocation acceptance passed."
