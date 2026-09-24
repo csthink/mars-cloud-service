@@ -27,7 +27,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(classes = GatewayApplication.class)
 @ActiveProfiles({"local", "test"})
-@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
 class LocalConfigHygieneTest {
 
     @Autowired

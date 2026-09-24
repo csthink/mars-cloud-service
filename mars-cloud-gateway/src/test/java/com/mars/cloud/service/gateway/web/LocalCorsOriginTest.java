@@ -15,7 +15,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
         properties = "mars.gateway.cors.local-origins=http://127.0.0.1:5173")
 @ActiveProfiles({"local", "test"})
 @AutoConfigureWebTestClient
-@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
 class LocalCorsOriginTest {
 
     @Autowired

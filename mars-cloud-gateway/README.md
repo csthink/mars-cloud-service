@@ -23,6 +23,12 @@
 
 路径原样转发，不去掉前缀。local / test 且网关实际监听回环地址时，也接受回环 Host；其他环境只接受表中的正式 Host。未知 Host、认证域名上的业务路径及非本地环境中的 `/upms/**`、`/sample/**` 返回 `63001/404`。已匹配路由但目标暂无实例时返回 `63002/503`。
 
+## JWT 验证
+
+网关从 `MARS_SECURITY_ISSUER_URI` 读取签发方地址，可选从 `MARS_SECURITY_JWK_SET_URI` 读取公钥集合地址；启动前必须配置签发方。受保护请求的 Bearer 令牌须通过签名、签发方、时效与 `mars-cloud-gateway` audience 校验。网关使用响应式安全链，验证失败时返回 security starter 的统一错误信封；业务服务仍验证自己的 audience 并执行权限判断。
+
+认证 Host 的签发方端点清单允许不带访问令牌。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。
+
 API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为 `https://flippoabc.com`、`https://word.flippoabc.com`、`https://console.flippoabc.com`；允许 GET、POST、PUT、PATCH、DELETE、OPTIONS，以及 Authorization、Content-Type、Accept、Idempotency-Key 请求头。未列入的来源被拒绝，不提供凭据型跨域许可。local / test 如需浏览器开发服务器跨域，用 `MARS_GATEWAY_CORS_LOCAL_ORIGINS` 提供以逗号分隔的完整回环 origin，例如 `http://127.0.0.1:5173`；正式环境不接受该配置。认证域名及 `/userinfo` 不提供跨域许可。
 
 ## 来源地址与请求头
@@ -82,17 +88,19 @@ python3 sentinel-rules.py --env-file .env publish
 
 ```bash
 # UPMS 未启动时经网关访问：
-curl -i -X POST http://127.0.0.1:8100/upms/v1/decision
+curl -i -X POST -H "Authorization: Bearer $ACCESS_TOKEN" http://127.0.0.1:8100/upms/v1/decision
 # HTTP/1.1 503
 # {"success":false,"code":"63002","message":"目标服务当前没有可用实例"}
 ```
+
+这里的 `ACCESS_TOKEN` 须包含 `mars-cloud-gateway` audience；没有有效令牌时网关先返回 401。
 
 ## 管理端点与可观测性
 
 框架的 observability starter 给出管理端口 `9100`（业务端口加 1000）、链路追踪与结构化日志：
 
 - 业务端口与管理端口都只绑定 `SERVER_ADDRESS`（本机缺省 `127.0.0.1`），注册到 Nacos 的也是这个地址；部署时填实例的私网 IPv4 地址，见 [部署说明](../docs/deployment.md) 的「端口与 context path」。
-- 网关没有接入 Spring Security，管理端点只暴露 `health` 与 `info`，启动时打一条告警说明管理端点无法建立认证链。
+- 网关已接入 Spring Security；提供管理端点凭据后，`health` 允许匿名访问，`prometheus` 等端点要求 Basic 认证。缺少凭据时开发环境只暴露 `health` 与 `info`，正式环境启动失败。
 - 每个经网关转发的请求在追踪后端里有网关的服务端与客户端两个 span，`traceparent` 随请求转发给目标服务，
   下游进程接续同一条 trace。
 - 控制台日志是带 `traceId` 的 JSON。网关是响应式栈，请求处理会在 Reactor 线程之间切换，
@@ -155,7 +163,7 @@ mvn -f .. package -pl mars-cloud-gateway -am
 ./verify-sentinel-e2e.sh          # 需要本机 Nacos 与本目录的 .env；SENTINEL_E2E_ENV_FILE 可另指环境文件
 ```
 
-`verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、sample 路由及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。
+`verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、无令牌的 sample 请求及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。
 
 ## 配置：分层与来源
 
@@ -174,8 +182,8 @@ mvn -f .. package -pl mars-cloud-gateway -am
 
 ## 依赖边界
 
-- 直接依赖框架仓的 `mars-cloud-common`（信封与错误码契约）、`mars-cloud-nacos-spring-boot-starter`
-  与 `mars-cloud-observability-spring-boot-starter`；
+- 直接依赖框架仓的 `mars-cloud-common`（信封与错误码契约）、`mars-cloud-nacos-spring-boot-starter`、
+  `mars-cloud-observability-spring-boot-starter` 与 `mars-cloud-security-spring-boot-starter`；管理端点认证还需要 `spring-boot-starter-security`
   **不引入** Servlet 栈的 `mars-cloud-mvc-spring-boot-starter`——它的统一响应、异常处理与错误码校验都是 Servlet 实现，
   网关在 `web` 包里为响应式栈单独实现了同一契约
 - 错误码区间的启动期校验器也在 mvc starter 里，网关引不了，改由 `GatewayErrorCodeTest` 守住区间与 i18n 完整性

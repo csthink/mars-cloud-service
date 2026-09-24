@@ -31,7 +31,6 @@ import java.net.ServerSocket;
 @Import(ErrorEnvelopeContractTest.ExtraRoutes.class)
 @ActiveProfiles({"local", "test"})
 @AutoConfigureWebTestClient
-@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
 class ErrorEnvelopeContractTest {
 
     @DynamicPropertySource

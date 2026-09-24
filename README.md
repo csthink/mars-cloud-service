@@ -50,7 +50,7 @@ mvn clean install
 mvn -pl mars-cloud-upms-service -am test
 ```
 
-sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 `MARS_SECURITY_JWK_SET_URI`。两服务要求合法 Bearer 令牌，令牌 audience 分别包含服务名；sample 调 UPMS 时需要同时包含两者。健康探针仍允许匿名访问。凭据不写入仓库或 Nacos 配置正文。
+gateway、sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 `MARS_SECURITY_JWK_SET_URI`。网关与两服务分别验证 Bearer 令牌的 audience；经网关访问受保护接口时，令牌还须包含 `mars-cloud-gateway`。sample 调 UPMS 时需要同时包含两者的 audience。健康探针仍允许匿名访问。凭据不写入仓库或 Nacos 配置正文。
 
 `./verify-security-e2e.sh` 通过测试 classpath 启动临时签发器，验证正常打包 jar 的认证与权限行为，并在结束时清理临时令牌。原有三份验收脚本也自动使用同一辅助流程。
 
@@ -68,7 +68,7 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 
 | 服务 | 端口 | 错误码区间 | 职责 | 状态 |
 | --- | --- | --- | --- | --- |
-| `mars-cloud-gateway` | 8100 | `63000–63999` | 系统外部请求的统一入口：路由到各业务服务，错误响应与业务服务同一种信封。响应式栈 | ✅ 已落地（鉴权第一道与全局限流待后续接入） |
+| `mars-cloud-gateway` | 8100 | `63000–63999` | 系统外部请求的统一入口：路由到各业务服务，验证受保护请求的 JWT，错误响应与业务服务同一种信封。响应式栈 | ✅ 已接入 JWT 验证 |
 | `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：授权码签发、公钥、账号与会话持久化 | ✅ 已提供协议与本地验证，生产短信登录待接入 |
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | 框架使用示例：一条命令跑起来的完整接线示范 | ✅ 已落地 |
@@ -78,7 +78,7 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 各服务逐个加入根聚合 POM 的 `<modules>`，已占用的错误码子区间登记在
 [docs/services.md](docs/services.md)。
 
-每个服务的管理端点（Actuator）在「业务端口加 1000」的管理端口上：`health` 匿名可读，其余端点要 Basic 认证；网关没有接入 Spring Security，只暴露 `health` 与 `info`。
+每个服务的管理端点（Actuator）在「业务端口加 1000」的管理端口上：`health` 匿名可读，其余端点要 Basic 认证；网关也按此规则保护管理端口。
 链路追踪、结构化日志与管理端点的约定由框架仓的 observability starter 统一给出。
 
 **想先看看怎么写一个服务**：`mars-cloud-sample-service` 是最小可运行示例，

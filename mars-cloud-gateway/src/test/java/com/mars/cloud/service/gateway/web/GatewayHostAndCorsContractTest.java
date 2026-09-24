@@ -14,7 +14,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 @ActiveProfiles({"local", "test"})
 @AutoConfigureWebTestClient
 @org.springframework.test.context.TestPropertySource(properties = {
-        "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration",
         "logging.level.com.mars.cloud.service.gateway.web.EnvelopeErrorWebExceptionHandler=ERROR",
         "logging.level.org.springframework.cloud.loadbalancer.core.RoundRobinLoadBalancer=ERROR"
 })

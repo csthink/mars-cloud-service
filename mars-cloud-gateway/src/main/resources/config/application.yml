@@ -1,6 +1,12 @@
 spring:
   application:
     name: mars-cloud-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${MARS_SECURITY_ISSUER_URI:}
+          jwk-set-uri: ${MARS_SECURITY_JWK_SET_URI:}
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   main:
@@ -55,6 +61,8 @@ spring:
                 - Path=/sample/**
 
 mars:
+  security:
+    audience: ${spring.application.name}
   gateway:
     proxy:
       trusted-hop-count: ${MARS_GATEWAY_TRUSTED_HOP_COUNT:0}

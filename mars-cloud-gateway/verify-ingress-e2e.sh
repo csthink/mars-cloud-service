@@ -94,6 +94,8 @@ start_gateway() {
         export SERVER_PORT="$GATEWAY_PORT"
         export MARS_GATEWAY_TRUSTED_HOP_COUNT=1
         export MARS_GATEWAY_DIRECT_PEER_CIDRS="$cidrs"
+        export MARS_SECURITY_ISSUER_URI="https://127.0.0.1:$AUTH_PORT"
+        export MARS_SECURITY_JWK_SET_URI="https://127.0.0.1:$AUTH_PORT/.well-known/jwks.json"
         exec java "${jvm_flags[@]}" "${trust_flags[@]}" -jar "$module_dir/target/mars-cloud-gateway.jar"
     ) >"$log_dir/gateway.log" 2>&1 & GATEWAY_PID=$!
     wait_health gateway "$((GATEWAY_PORT + 1000))"
@@ -116,7 +118,7 @@ for ((attempt=0; attempt<60; attempt++)); do
     [ "$sample_status" = 401 ] && break
     sleep 1
 done
-check 'sample route reaches protected service' 401 "$sample_status"
+check 'gateway rejects sample request without bearer' 401 "$sample_status"
 check 'sample route rejects auth Host' 404 "$(status -H 'Host: auth.flippoabc.com' \
     -H 'X-Forwarded-For: 192.0.2.23' -H 'X-Forwarded-Proto: https' "$base/sample/v1/security/me")"
 
