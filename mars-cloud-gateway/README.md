@@ -25,6 +25,12 @@
 
 API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为 `https://flippoabc.com`、`https://word.flippoabc.com`、`https://console.flippoabc.com`；允许 GET、POST、PUT、PATCH、DELETE、OPTIONS，以及 Authorization、Content-Type、Accept、Idempotency-Key 请求头。未列入的来源被拒绝，不提供凭据型跨域许可。local / test 如需浏览器开发服务器跨域，用 `MARS_GATEWAY_CORS_LOCAL_ORIGINS` 提供以逗号分隔的完整回环 origin，例如 `http://127.0.0.1:5173`；正式环境不接受该配置。认证域名及 `/userinfo` 不提供跨域许可。
 
+## 来源地址与请求头
+
+网关在路由与跨域处理前读取 TCP 对端，并删除外部请求中的 `Forwarded`、全部 `X-Forwarded-*` 和三个内部身份头 `X-Mars-Subject`、`X-Mars-Client-Id`、`X-Mars-Tenant-Id`。转发给业务服务时，转发头只保留网关核对后生成的 `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto`、`X-Forwarded-Port`；认证签发路径保留已核对的原始 Host。
+
+`MARS_GATEWAY_TRUSTED_HOP_COUNT` 默认 `0`，此时来源 IP 是 TCP 对端，外部转发链不参与判定。接入可信负载均衡后，将它设为可信代理数量，并用 `MARS_GATEWAY_DIRECT_PEER_CIDRS` 列出可直接连接网关的代理 IP 地址段，多个 CIDR 用逗号分隔。非可信对端返回 403；缺失、重复或非法的转发链返回 400。正式环境中，可信代理还须提供单一的 HTTPS `X-Forwarded-Proto`。业务端口应仅允许配置的负载均衡连接；独立管理端口不要求这些头。
+
 刻意**不开** `discovery.locator`：开了以后注册中心里的每个服务都会被自动暴露，
 网关就不再是「显式声明的唯一入口」。新增业务服务时在这里加一条路由。
 
@@ -108,6 +114,8 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
 mvn -f .. package                 # 网关与 UPMS 都需要 package
 ./verify-e2e.sh                   # 需要本机 Nacos 与本目录的 .env
 ```
+
+`verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、sample 路由及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。
 
 ## 配置：分层与来源
 

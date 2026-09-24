@@ -29,7 +29,7 @@ public final class AuthEnvironment {
         if (!java.util.Set.of("", "/").contains(environment.getProperty("server.servlet.context-path", "")))
             throw new IllegalStateException("Authentication protocol endpoints require the root context path");
         if (!"none".equalsIgnoreCase(environment.getProperty("server.forward-headers-strategy", "none")))
-            throw new IllegalStateException("Forwarded headers must remain disabled until a trusted proxy is configured");
+            throw new IllegalStateException("Forwarded headers must remain disabled in the container; trusted gateways use the request filter");
         if (properties.getLocalLogin().isEnabled() && !local)
             throw new IllegalStateException("Local login is restricted to local/test profiles");
         var sms = properties.getSms();

@@ -35,6 +35,11 @@ final class GatewayHostPolicy {
                 || (localTest && isLoopbackHost(request, host)));
     }
 
+    static String canonicalHost(ServerHttpRequest request) {
+        Host checked = host(request);
+        return checked == null ? null : checked.name() + (checked.port() < 0 ? "" : ":" + checked.port());
+    }
+
     private static boolean isPublicHost(Host host, String expected) {
         return host.name().equals(expected) && (host.port() == -1 || host.port() == 443);
     }

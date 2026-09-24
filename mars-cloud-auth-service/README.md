@@ -36,7 +36,8 @@
 
 - MySQL 的 `SPRING_DATASOURCE_URL`、`SPRING_DATASOURCE_USERNAME`、`SPRING_DATASOURCE_PASSWORD`；连接 URL 带 `preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`。
 - Redis 的 host、port、database、password，以及 Nacos 和管理凭据。
-- `MARS_AUTH_ISSUER`：明确的 HTTPS issuer。正式部署使用 DNS 名；本地只允许与业务端口一致的 `https://127.0.0.1:<port>`。转发头处理保持关闭，代理入口另行配置。
+- `MARS_AUTH_ISSUER`：明确的 HTTPS issuer。正式部署使用 DNS 名；本地只允许与业务端口一致的 `https://127.0.0.1:<port>`。容器不自动采用转发头；仅通过下述可信网关地址段接收规范头。
+- `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`：可信网关实例的 IP 地址段，多个 CIDR 用逗号分隔。正式环境必填；local / test 的直连验证可留空。只有 TCP 对端命中这些地址段时，服务才校验并采用网关生成的单一 `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto`、`X-Forwarded-Port`；缺失或非法返回 400。其他直连请求忽略转发头。管理端口不受该规则影响。
 - `MARS_AUTH_JWK_ENCRYPTION_KEY`：随机 32 字节的 Base64 编码；`MARS_AUTH_JWK_ENCRYPTION_KEY_ID`：密钥版本。两项需持久保管，重启时保持一致。RSA 私钥经 AES-GCM 加密保存，数据库仅发布公钥。
 - `SPRING_CONFIG_ADDITIONAL_LOCATION`：受控客户端 YAML 文件，包含六个客户端各自的 `redirect-uris`、`post-logout-redirect-uris`。正式浏览器必须精确 HTTPS 地址，原生必须为带明确端口的字面 `127.0.0.1` 地址。
 - `MARS_AUTH_SMS_HMAC_KEY`：启用发码前配置独立随机 32 字节的 Base64 编码密钥，各实例使用相同值；不与 JWK 密钥共用。
@@ -61,7 +62,7 @@ Flyway 管理九张应用表与自己的历史表，不启用 `clean` 或自动 
 
 账号绑定按 `(channel, identity_scope, subject)` 完整三元组唯一，区分大小写、重音及 subject 尾部空格；同一账号可有多个渠道绑定。当前账号写入只接受已验证的规范化 E.164 手机号，使用 `SMS/e164`，账号、绑定和审计在同一事务提交。短信登录仅接受 LOGIN 用途；手机号换绑接口尚未提供。调用方提供的渠道资料不能直接作为认证结果。
 
-短信挑战有效期五分钟，同号同用途的新挑战覆盖旧挑战；验证码最多校验五次，成功后原子删除。发码按同号一分钟一次、滚动 24 小时十次，以及来源 IP 滚动一小时十次、滚动 24 小时五十次限制。达到图形验证码阈值时，先验证图形答案再预留发码额度。来源 IP 取服务端看到的连接对端地址。
+短信挑战有效期五分钟，同号同用途的新挑战覆盖旧挑战；验证码最多校验五次，成功后原子删除。发码按同号一分钟一次、滚动 24 小时十次，以及来源 IP 滚动一小时十次、滚动 24 小时五十次限制。达到图形验证码阈值时，先验证图形答案再预留发码额度。来源 IP 对可信网关连接取已校验的 `X-Forwarded-For`；其他直连请求取 TCP 对端地址。
 
 日预算暂停后，运维先核对当前 UTC 日期的发送计数与配置上限，再在受保护环境执行恢复命令。恢复操作会先写入请求记录，再原子检查计数并清除暂停标记；计数仍达到上限时拒绝恢复。`--audit-file` 的上级目录须为 `0700`，文件为 `0600`，操作原因不要包含手机号或验证码。
 

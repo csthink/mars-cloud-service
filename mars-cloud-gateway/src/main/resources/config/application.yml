@@ -14,6 +14,10 @@ spring:
     gateway:
       server:
         webflux:
+          forwarded:
+            enabled: false
+          x-forwarded:
+            enabled: false
           # 路由显式声明，不开 discovery.locator：系统外部请求统一经过 gateway，
           # 注册中心里的每个服务不应自动暴露到公网。
           routes:
@@ -51,6 +55,10 @@ spring:
                 - Path=/sample/**
 
 mars:
+  gateway:
+    proxy:
+      trusted-hop-count: ${MARS_GATEWAY_TRUSTED_HOP_COUNT:0}
+      direct-peer-cidrs: ${MARS_GATEWAY_DIRECT_PEER_CIDRS:}
   env:
     # 命中时失败响应回带调试详情，语义与业务服务一致；上线前确认生产 profile 不在其中。
     dev-profiles:
@@ -62,6 +70,7 @@ mars:
   # 网关不引 Servlet 栈的 mvc starter，因此没有 mars.error-code.* 的启动期校验。
 
 server:
+  forward-headers-strategy: none
   port: 8100
   # 业务端口的绑定地址。本机缺省回环地址；部署时由环境变量给出实例的私网 IPv4 地址。
   # 管理端口的地址与注册到 Nacos 的地址由可观测性组件与 Nacos 组件从它推导，这里不另写。

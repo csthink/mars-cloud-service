@@ -35,6 +35,7 @@ server:
   forward-headers-strategy: none
 mars:
   auth:
+    trusted-gateway-cidrs: ${MARS_AUTH_TRUSTED_GATEWAY_CIDRS:}
     issuer: ${MARS_AUTH_ISSUER:}
     jwk:
       encryption-key: ${MARS_AUTH_JWK_ENCRYPTION_KEY:}

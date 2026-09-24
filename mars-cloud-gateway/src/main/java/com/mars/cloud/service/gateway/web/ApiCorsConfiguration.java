@@ -27,7 +27,7 @@ public class ApiCorsConfiguration {
             "/auth", "/product", "/order", "/notice", "/upms", "/sample");
 
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 1)
     CorsWebFilter apiCorsWebFilter(Environment environment) {
         boolean localTest = GatewayHostPolicy.isLocalTest(environment);
         List<String> allowedOrigins = new ArrayList<>(PUBLIC_ORIGINS);
