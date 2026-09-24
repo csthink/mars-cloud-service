@@ -1,6 +1,6 @@
 # 在 IntelliJ IDEA 中运行本地服务
 
-本文从安装框架依赖开始，运行当前已实现的 gateway、sample 和 UPMS，并检查服务健康与服务之间的调用；监控面板 monitor 是可选的第四个启动项。`mars-cloud-framework` 提供库和 starter，完成 Maven `install` 即可，不需要启动应用进程。正式 `auth-service` 尚未提供，本地认证使用项目自带的测试签发器；它不提供登录页面，也不能用于生产。
+本文从安装框架依赖开始，运行当前已实现的 gateway、sample 和 UPMS，并检查服务健康与服务之间的调用；监控面板 monitor 是可选的第四个启动项。`mars-cloud-framework` 提供库和 starter，完成 Maven `install` 即可，不需要启动应用进程。本文的 sample/UPMS 示例继续使用项目自带的测试签发器；它不提供登录页面，也不能用于生产。需要验证真实授权码、登录会话与密钥持久化时，按 [认证服务 README](../mars-cloud-auth-service/README.md) 单独配置 HTTPS、数据库和 Redis。
 
 ## 1. 前置条件
 

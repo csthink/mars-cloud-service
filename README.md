@@ -18,7 +18,7 @@ mars-cloud 微服务体系的**可部署应用仓**：网关、认证服务与�
 `--sun-misc-unsafe-memory-access=allow`（Lombok 在 JDK 24 及以上编译期需要），无需手动设置；
 应用进程自己需要的同名参数见 [`docs/deployment.md`](docs/deployment.md) 的「JVM 参数」一节。
 测试 JVM 由框架 BOM 统一配置为以 `-javaagent` 预加载 mockito-core，因此**有测试的模块必须依赖
-`spring-boot-starter-test`**（本仓四个模块都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
+`spring-boot-starter-test`**（本仓五个模块都已满足）；缺了它测试 JVM 起不来，报错里会显示未解析的
 `${org.mockito:mockito-core:jar}`。
 
 本仓依赖框架仓 `mars-cloud-framework`，而框架尚未发布到制品库，
@@ -60,6 +60,8 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 发现全部实例，并在实例下线时写出日志通知。端口、管理端点与面板的凭据、追踪与日志后端地址从 sample 的 `.env` 读取，
 变量见 [`.env.example`](.env.example)。
 
+认证服务的 HTTPS、本地随机测试登录、六客户端配置与独立验收见 [模块 README](mars-cloud-auth-service/README.md)。它的标准协议端点不使用业务响应信封。
+
 本地中间件可由 [dev/README.md](dev/README.md) 的统一入口启动、初始化与验证。
 
 ## 服务
@@ -67,7 +69,7 @@ sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可选设置 
 | 服务 | 端口 | 错误码区间 | 职责 | 状态 |
 | --- | --- | --- | --- | --- |
 | `mars-cloud-gateway` | 8100 | `63000–63999` | 系统外部请求的统一入口：路由到各业务服务，错误响应与业务服务同一种信封。响应式栈 | ✅ 已落地（鉴权第一道与全局限流待后续接入） |
-| `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：令牌签发、登录渠道、短信验证码、账号 | 规划中 |
+| `mars-cloud-auth-service` | 8101 | `64000–64999` | 认证（AuthN）：授权码签发、公钥、账号与会话持久化 | ✅ 已提供协议与本地验证，生产短信登录待接入 |
 | `mars-cloud-upms-service` | 8102 | `65000–65999` | 授权（AuthZ）：subject / action / resource 决策（PDP） | ✅ 已落地 |
 | `mars-cloud-sample-service` | 8103 | `66100–66199` | 框架使用示例：一条命令跑起来的完整接线示范 | ✅ 已落地 |
 | `mars-cloud-<biz>-service` | 8104–8179 | `66000–99999` 内自选 | 业务服务，共用 `business` 区段、各自声明一段 | 规划中 |

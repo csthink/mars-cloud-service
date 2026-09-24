@@ -46,6 +46,8 @@ mvn -pl mars-cloud-upms-service -am clean package
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
 网关、UPMS、sample 与监控面板都需要其中的 Nacos Namespace 与账号。
+认证服务还需要 MySQL、Redis、持久保存的加密根密钥、明确 HTTPS issuer 和六客户端回跳配置，详见 [认证模块配置](../mars-cloud-auth-service/README.md)。业务端口可使用 HTTPS，管理端口仍使用 HTTP，并通过注册元数据 `management.scheme=http` 明确区分；管理端口只对受控网络开放。
+
 sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否则通过 issuer 元数据发现。
 两服务的 audience 分别为自己的应用名；sample 调用 UPMS 时，访问令牌的 audience 必须同时包含两者。
 缺少认证配置时启动失败；健康探针允许匿名访问，业务接口需要合法 Bearer 令牌。
@@ -193,12 +195,12 @@ RocketMQ 消息共用一条 W3C trace。控制台日志是 Elastic Common Schema
 | 服务 | 端口 | context path |
 | --- | --- | --- |
 | `mars-cloud-gateway` | 8100 | 无（路径原样转发给目标服务） |
-| `mars-cloud-auth-service` | 8101 | （规划中） |
+| `mars-cloud-auth-service` | 8101 | 无（协议端点位于根路径） |
 | `mars-cloud-upms-service` | 8102 | `/upms` |
 | `mars-cloud-sample-service` | 8103 | `/sample` |
 | `mars-cloud-monitor` | 8190 | 无（只绑内网地址，不经网关） |
 
-每个服务的管理端口是业务端口加 1000（9100、9102、9103、9190），同样可随 `SERVER_PORT` 覆盖而跟着变化。
+每个服务的管理端口是业务端口加 1000（9100、9101、9102、9103、9190），同样可随 `SERVER_PORT` 覆盖而跟着变化。
 
 **监听地址**：每个服务的业务端口与管理端口都只绑定 `SERVER_ADDRESS`，注册到 Nacos 的也是这个地址，
 其他服务与网关按注册地址调用它。配置文件只写 `server.address: ${SERVER_ADDRESS:127.0.0.1}`；

@@ -8,6 +8,7 @@ import urllib.request
 from middleware import Failure, protected_write
 
 CONFIGS = {
+    ('DEFAULT_GROUP', 'mars-cloud-auth-service.yaml'): 'mars:\n  auth:\n    config-revision: local-1\n',
     ('COMMON', 'shared-common.yaml'): 'mars:\n  config-revision: local-1\n',
     ('DEFAULT_GROUP', 'mars-cloud-gateway.yaml'): 'mars:\n  gateway:\n    config-revision: local-1\n',
     ('DEFAULT_GROUP', 'mars-cloud-upms-service.yaml'): 'mars:\n  upms:\n    nacos:\n      config-revision: local-1\n',

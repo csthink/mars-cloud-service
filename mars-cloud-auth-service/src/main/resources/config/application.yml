@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: mars-cloud-auth-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  messages:
+    basename: i18n/error-code
+    encoding: UTF-8
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+  sql:
+    init:
+      mode: never
+  flyway:
+    clean-disabled: true
+    baseline-on-migrate: false
+    validate-on-migrate: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${mars.auth.issuer}
+          jwk-set-uri: ${mars.auth.issuer}/.well-known/jwks.json
+server:
+  port: 8101
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  forward-headers-strategy: none
+mars:
+  auth:
+    issuer: ${MARS_AUTH_ISSUER:}
+    jwk:
+      encryption-key: ${MARS_AUTH_JWK_ENCRYPTION_KEY:}
+      encryption-key-id: ${MARS_AUTH_JWK_ENCRYPTION_KEY_ID:}
+    local-login:
+      enabled: ${MARS_AUTH_LOCAL_LOGIN_ENABLED:false}
+      user-id: ${MARS_AUTH_LOCAL_LOGIN_USER_ID:}
+      password: ${MARS_AUTH_LOCAL_LOGIN_PASSWORD:}
+  security:
+    audience: ${spring.application.name}
+  env:
+    dev-profiles: [local, test]
+  error-code:
+    validate: true
+    framework-layers: [common, mvc, security, auth-service]
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db,redis
+  server:
+    ssl:
+      enabled: false
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+---
+spring:
+  config:
+    activate:
+      on-profile: "!test"
+    import:
+      - nacos:shared-common.yaml?group=COMMON&refreshEnabled=true
+      - nacos:${spring.application.name}.yaml?group=DEFAULT_GROUP&refreshEnabled=true
+  cloud:
+    nacos:
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE_ID}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE_ID}
+        group: DEFAULT_GROUP
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        metadata:
+          management.scheme: http
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+mars:
+  observability:
+    logging:
+      console-format: plain

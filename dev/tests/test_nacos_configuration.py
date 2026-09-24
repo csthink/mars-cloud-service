@@ -279,7 +279,7 @@ class NumberedEnvironmentNamespaces(unittest.TestCase):
         self.initialize()
         written = {key for key, _ in self.api.writes if key != 'namespace'}
         seeded = {('mars-slot-2', 'DEFAULT_GROUP', name) for name in
-                  ('mars-cloud-upms-service.yaml', 'mars-cloud-sample-service.yaml', 'mars-cloud-monitor.yaml')}
+                  ('mars-cloud-auth-service.yaml', 'mars-cloud-upms-service.yaml', 'mars-cloud-sample-service.yaml', 'mars-cloud-monitor.yaml')}
         self.assertEqual(written, seeded | {('mars-local', group, data_id) for group, data_id in init.CONFIGS})
         self.assertEqual(self.api.values[('mars-slot-2', 'COMMON', 'shared-common.yaml')], dict(content='synchronized: base\n', type='yaml'))
         self.assertEqual(self.api.values[('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-gateway.yaml')], dict(content='synchronized: gateway\n', type='text'))
