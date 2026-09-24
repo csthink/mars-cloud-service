@@ -14,7 +14,7 @@
 - 响应式栈：依赖 `mars-cloud-common` 的信封与错误码契约，**不引入 Servlet 栈的 mvc starter**；
   统一响应与异常处理在网关内为响应式栈单独实现，网关自产错误与业务服务返回同一种信封，
   业务服务的响应原样透传
-- 路由**显式声明**（当前：`/upms/**` → `lb://mars-cloud-upms-service`、`/sample/**` → `lb://mars-cloud-sample-service`），不开 discovery locator
+- 路由**显式声明**：认证 Host 的签发方路径到 auth，API Host 的 `/auth/**`、`/product/**`、`/order/**`、`/notice/**` 分别到对应服务；`/upms/**` 与 `/sample/**` 只在 local / test 可达。路径与目标的完整清单见网关 README；不开 discovery locator
 - 已占用的错误码：`63001`（无匹配路由）、`63002`（目标服务无可用实例）、`63003`（连接目标失败）、
   `63004`（目标响应超时）
 - 职责规划：路由 ✅；鉴权第一道、全局限流、灰度待后续接入

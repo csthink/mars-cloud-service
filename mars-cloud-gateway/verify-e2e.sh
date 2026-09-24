@@ -144,6 +144,37 @@ check "HTTP 状态码" "404" "$(printf '%s' "$body" | tail -1)"
 contains "错误码为 63001" '"code":"63001"' "$body"
 
 echo
+echo "③a Host 与新路由：真实请求区分拒绝与无实例"
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/product/v1/catalog" -H 'Host: api.flippoabc.com')
+check "API Host 的 product 路由已匹配，目标无实例" "503" "$(printf '%s' "$body" | tail -1)"
+contains "product 无实例错误码" '"code":"63002"' "$body"
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/auth/v1/me" -H 'Host: auth.flippoabc.com')
+check "认证 Host 不接受业务 API" "404" "$(printf '%s' "$body" | tail -1)"
+contains "认证 Host 业务 API 错误码" '"code":"63001"' "$body"
+body=$(security_curl -s -o /dev/stdout -w '\n%{http_code}' "$GATEWAY/login" -H 'Host: auth.flippoabc.com')
+check "认证 Host 的登录路由已匹配，目标无实例" "503" "$(printf '%s' "$body" | tail -1)"
+contains "登录路由无实例错误码" '"code":"63002"' "$body"
+check "未知 Host 被拒绝" "404" "$(status_of "$GATEWAY/product/v1/catalog" -H 'Host: other.flippoabc.com')"
+
+echo
+echo "③b API 跨域：三项许可与未列入来源"
+cors_header() {
+  security_curl -s -D - -o /dev/null "$@" | tr -d '\r' | awk -F ': ' 'tolower($1) == "access-control-allow-origin" { print $2 }'
+}
+for origin in https://flippoabc.com https://word.flippoabc.com https://console.flippoabc.com; do
+  args=(-X OPTIONS "$GATEWAY/product/v1/catalog" -H 'Host: api.flippoabc.com'
+        -H "Origin: $origin" -H 'Access-Control-Request-Method: GET')
+  check "$origin 预检状态" "200" "$(status_of "${args[@]}")"
+  check "$origin 跨域来源" "$origin" "$(cors_header "${args[@]}")"
+done
+check "待定来源预检被拒" "403" "$(status_of -X OPTIONS "$GATEWAY/product/v1/catalog" \
+  -H 'Host: api.flippoabc.com' -H 'Origin: https://book.flippoabc.com' \
+  -H 'Access-Control-Request-Method: GET')"
+check "认证 Host 的 /userinfo 无跨域许可" "" \
+  "$(cors_header -X OPTIONS "$GATEWAY/userinfo" -H 'Host: auth.flippoabc.com' \
+    -H 'Origin: https://flippoabc.com' -H 'Access-Control-Request-Method: GET')"
+
+echo
 echo "④ 再启动 UPMS（端口 $UPMS_PORT，日志 $UPMS_LOG）"
 SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" >"$UPMS_LOG" 2>&1 &
 UPMS_PID=$!

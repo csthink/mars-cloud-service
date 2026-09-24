@@ -34,11 +34,22 @@ class GatewayRoutingContractTest {
         assertThat(routes).isNotNull();
         // 路由 id 按顺序全等：新增、删除或调换顺序都必须先让这条用例失败，再由改动者确认。
         // 顺序也是契约的一部分：网关按声明顺序匹配，重排会改变路径重叠时的命中结果。
-        assertThat(routes).extracting(Route::getId).containsExactly("upms", "sample");
+        assertThat(routes).extracting(Route::getId).containsExactly("auth-issuer", "auth-api", "product", "order", "notice", "upms", "sample");
+        assertThat(route(routes, "auth-issuer").getUri()).isEqualTo(URI.create("lb://mars-cloud-auth-service"));
+        assertThat(route(routes, "auth-api").getUri()).isEqualTo(URI.create("lb://mars-cloud-auth-service"));
+        assertThat(route(routes, "product").getUri()).isEqualTo(URI.create("lb://mars-cloud-product-service"));
+        assertThat(route(routes, "order").getUri()).isEqualTo(URI.create("lb://mars-cloud-order-service"));
+        assertThat(route(routes, "notice").getUri()).isEqualTo(URI.create("lb://mars-cloud-notice-service"));
         assertThat(route(routes, "upms").getUri()).isEqualTo(URI.create("lb://mars-cloud-upms-service"));
         assertThat(route(routes, "sample").getUri()).isEqualTo(URI.create("lb://mars-cloud-sample-service"));
         // 断言判定的完整描述而不是子串：给某条路由偷偷再加一个判定（Header、Method 等）也会让这里失败。
         // 描述里带一个路由定位器包装的 lambda，它的名字含每次运行都不同的地址，先归一化再比较。
+        assertThat(predicateOf(routes, "auth-issuer"))
+                .contains("Hosts: [auth.flippoabc.com", "Paths: [/oauth2/**");
+        assertThat(predicateOf(routes, "auth-api")).contains("Paths: [/auth/**");
+        assertThat(predicateOf(routes, "product")).contains("Paths: [/product/**");
+        assertThat(predicateOf(routes, "order")).contains("Paths: [/order/**");
+        assertThat(predicateOf(routes, "notice")).contains("Paths: [/notice/**");
         assertThat(predicateOf(routes, "upms"))
                 .isEqualTo("(<locator> && Paths: [/upms/**], match trailing slash: true)");
         assertThat(predicateOf(routes, "sample"))

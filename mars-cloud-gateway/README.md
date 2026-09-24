@@ -11,10 +11,19 @@
 
 路由在 `config/application.yml` 里**显式声明**，目标用服务名走注册中心的客户端负载均衡：
 
-| 路径 | 目标 | 说明 |
-| --- | --- | --- |
-| `/upms/**` | `lb://mars-cloud-upms-service` | UPMS 自带 context path `/upms`，路径不改写 |
-| `/sample/**` | `lb://mars-cloud-sample-service` | 示例服务自带 context path `/sample`，路径不改写 |
+| 入口 Host | 路径 | 目标 | 使用环境 |
+| --- | --- | --- | --- |
+| `auth.flippoabc.com` | `/oauth2/**`、`/.well-known/**`、`/login`、`/login/**`、`/logout`、`/connect/logout`、`/userinfo` | `lb://mars-cloud-auth-service` | 全部 |
+| `api.flippoabc.com` | `/auth/**` | `lb://mars-cloud-auth-service` | 全部 |
+| `api.flippoabc.com` | `/product/**` | `lb://mars-cloud-product-service` | 全部 |
+| `api.flippoabc.com` | `/order/**` | `lb://mars-cloud-order-service` | 全部 |
+| `api.flippoabc.com` | `/notice/**` | `lb://mars-cloud-notice-service` | 全部 |
+| `api.flippoabc.com` | `/upms/**` | `lb://mars-cloud-upms-service` | local / test |
+| `api.flippoabc.com` | `/sample/**` | `lb://mars-cloud-sample-service` | local / test |
+
+路径原样转发，不去掉前缀。local / test 且网关实际监听回环地址时，也接受回环 Host；其他环境只接受表中的正式 Host。未知 Host、认证域名上的业务路径及非本地环境中的 `/upms/**`、`/sample/**` 返回 `63001/404`。已匹配路由但目标暂无实例时返回 `63002/503`。
+
+API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为 `https://flippoabc.com`、`https://word.flippoabc.com`、`https://console.flippoabc.com`；允许 GET、POST、PUT、PATCH、DELETE、OPTIONS，以及 Authorization、Content-Type、Accept、Idempotency-Key 请求头。未列入的来源被拒绝，不提供凭据型跨域许可。local / test 如需浏览器开发服务器跨域，用 `MARS_GATEWAY_CORS_LOCAL_ORIGINS` 提供以逗号分隔的完整回环 origin，例如 `http://127.0.0.1:5173`；正式环境不接受该配置。认证域名及 `/userinfo` 不提供跨域许可。
 
 刻意**不开** `discovery.locator`：开了以后注册中心里的每个服务都会被自动暴露，
 网关就不再是「显式声明的唯一入口」。新增业务服务时在这里加一条路由。
