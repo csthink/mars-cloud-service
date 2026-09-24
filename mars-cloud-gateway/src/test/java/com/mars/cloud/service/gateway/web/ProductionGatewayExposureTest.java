@@ -12,7 +12,11 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 @SpringBootTest(classes = GatewayApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles({"production", "test"})
 @AutoConfigureWebTestClient
-@org.springframework.test.context.TestPropertySource(properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
+@org.springframework.test.context.TestPropertySource(properties = {
+        "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration",
+        "logging.level.com.mars.cloud.service.gateway.web.EnvelopeErrorWebExceptionHandler=ERROR",
+        "logging.level.org.springframework.cloud.loadbalancer.core.RoundRobinLoadBalancer=ERROR"
+})
 class ProductionGatewayExposureTest {
 
     @Autowired
