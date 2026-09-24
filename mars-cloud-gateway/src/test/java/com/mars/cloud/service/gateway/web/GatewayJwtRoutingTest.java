@@ -65,6 +65,8 @@ class GatewayJwtRoutingTest {
                 () -> "http://127.0.0.1:" + UPSTREAM.getAddress().getPort());
         registry.add("spring.cloud.discovery.client.simple.instances.mars-cloud-product-service[0].uri",
                 () -> "http://127.0.0.1:" + UPSTREAM.getAddress().getPort());
+        registry.add("spring.cloud.discovery.client.simple.instances.mars-cloud-order-service[0].uri",
+                () -> "http://127.0.0.1:" + UPSTREAM.getAddress().getPort());
     }
 
     private static HttpServer startUpstream() {
@@ -240,6 +242,26 @@ class GatewayJwtRoutingTest {
         web.get().uri("/auth/v1%2Fme").header("Host", "api.flippoabc.com")
                 .exchange().expectStatus().is4xxClientError();
         assertThat(UPSTREAM_CALLS).hasValue(1);
+    }
+
+    @Test
+    void paymentCallbackIsAnonymousOnlyOnApiHost() {
+        web.post().uri("/order/v1/callbacks/mock").header("Host", "api.flippoabc.com")
+                .exchange().expectStatus().isOk();
+        verifyNoInteractions(redis);
+
+        web.post().uri("/order/v1/orders").header("Host", "api.flippoabc.com")
+                .exchange().expectStatus().isUnauthorized();
+        web.post().uri("/order/v1/callbacks-other/mock").header("Host", "api.flippoabc.com")
+                .exchange().expectStatus().isUnauthorized();
+        web.post().uri("/order/v1/callbacks/mock").header("Host", "auth.flippoabc.com")
+                .exchange().expectStatus().isNotFound();
+        assertThat(UPSTREAM_CALLS).hasValue(1);
+
+        web.post().uri("/order/v1/orders").header("Host", "api.flippoabc.com")
+                .headers(headers -> headers.setBearerAuth(signedToken(UUID.randomUUID().toString())))
+                .exchange().expectStatus().isOk();
+        assertThat(UPSTREAM_CALLS).hasValue(2);
     }
 
     @Test

@@ -65,6 +65,7 @@ public class GatewaySecurityConfiguration {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(ISSUER_PATTERNS).permitAll()
+                        .pathMatchers("/order/v1/callbacks/**").permitAll()
                         .pathMatchers("/product/v1/me", "/product/v1/me/**", "/product/v1/admin", "/product/v1/admin/**",
                                 "/notice/v1/me", "/notice/v1/me/**", "/notice/v1/admin", "/notice/v1/admin/**")
                         .authenticated()
