@@ -4,6 +4,7 @@ import com.mars.cloud.security.test.TestIdentityProvider;
 import com.mars.cloud.service.gateway.GatewayApplication;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
@@ -11,8 +12,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.mars.cloud.service.gateway.security.GatewaySessionRevocation;
 import reactor.core.publisher.Mono;
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -42,16 +47,20 @@ class GatewayJwtRoutingTest {
     private static final TestIdentityProvider ISSUER = new TestIdentityProvider();
     private static final AtomicInteger UPSTREAM_CALLS = new AtomicInteger();
     private static final HttpServer UPSTREAM = startUpstream();
+    private static final AtomicReference<String> ADMIN_CIDRS = new AtomicReference<>("127.0.0.1/32");
     private final Set<String> revokedKeys = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean redisAvailable = new AtomicBoolean(true);
 
     @Autowired WebTestClient web;
+    @LocalServerPort int port;
+    @Autowired ApplicationEventPublisher events;
     @MockitoBean ReactiveStringRedisTemplate redis;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", ISSUER::issuer);
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", ISSUER::jwksUri);
+        registry.add(GatewayAdminIpAllowlist.PROPERTY, ADMIN_CIDRS::get);
         registry.add("spring.cloud.discovery.client.simple.instances.mars-cloud-auth-service[0].uri",
                 () -> "http://127.0.0.1:" + UPSTREAM.getAddress().getPort());
         registry.add("spring.cloud.discovery.client.simple.instances.mars-cloud-product-service[0].uri",
@@ -86,6 +95,8 @@ class GatewayJwtRoutingTest {
         UPSTREAM_CALLS.set(0);
         revokedKeys.clear();
         redisAvailable.set(true);
+        ADMIN_CIDRS.set("127.0.0.1/32");
+        events.publishEvent(new EnvironmentChangeEvent(Set.of(GatewayAdminIpAllowlist.PROPERTY)));
         when(redis.hasKey(anyString())).thenAnswer(call -> Mono.defer(() -> redisAvailable.get()
                 ? Mono.just(revokedKeys.contains(call.getArgument(0)))
                 : Mono.error(new IllegalStateException("private Redis connection details"))));
@@ -95,6 +106,55 @@ class GatewayJwtRoutingTest {
         var claims = ISSUER.claims("alice", "mars-cloud-gateway");
         claims.put("sid", sid);
         return ISSUER.sign(claims);
+    }
+
+    private static String adminToken(String clientId) {
+        var claims = ISSUER.claims("alice", "mars-cloud-gateway");
+        claims.put("sid", UUID.randomUUID().toString());
+        claims.put("client_id", clientId);
+        return ISSUER.sign(claims);
+    }
+
+    @Test
+    void adminRequiresVerifiedConsoleClientAndCanonicalIp() {
+        web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .headers(headers -> headers.setBearerAuth(adminToken("portal")))
+                .exchange().expectStatus().isForbidden().expectBody().jsonPath("$.code").isEqualTo("62003");
+        web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .header("X-Mars-Client-Id", "console")
+                .headers(headers -> headers.setBearerAuth(adminToken("portal")))
+                .exchange().expectStatus().isForbidden();
+        assertThat(UPSTREAM_CALLS).hasValue(0);
+
+        web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .header("X-Forwarded-For", "192.0.2.10")
+                .headers(headers -> headers.setBearerAuth(adminToken("console")))
+                .exchange().expectStatus().isOk();
+        web.get().uri("/product/v1/admin").header("Host", "api.flippoabc.com")
+                .headers(headers -> headers.setBearerAuth(adminToken("portal")))
+                .exchange().expectStatus().isForbidden();
+        web.get().uri("/auth/v1/admin/users").header("Host", "api.flippoabc.com")
+                .headers(headers -> headers.setBearerAuth(adminToken("console")))
+                .exchange().expectStatus().isOk();
+        assertThat(UPSTREAM_CALLS).hasValue(2);
+
+        ADMIN_CIDRS.set("192.0.2.0/24");
+        events.publishEvent(new EnvironmentChangeEvent(Set.of(GatewayAdminIpAllowlist.PROPERTY)));
+        web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .header("X-Forwarded-For", "192.0.2.10")
+                .headers(headers -> headers.setBearerAuth(adminToken("console")))
+                .exchange().expectStatus().isForbidden().expectBody().jsonPath("$.code").isEqualTo("62003");
+        assertThat(UPSTREAM_CALLS).hasValue(2);
+    }
+
+    @Test
+    void malformedRawAdminPathsAreRejectedBeforeAuthentication() {
+        for (String path : new String[]{"/product/v1/admin%2Fitems", "/product/v1/%2eadmin/items",
+                "/product/v1/../v1/admin/items", "/product//v1/admin/items", "/product/v1/admin;foo=bar/items"}) {
+            web.get().uri(URI.create("http://127.0.0.1:" + port + path)).header("Host", "api.flippoabc.com")
+                    .exchange().expectStatus().isBadRequest();
+        }
+        assertThat(UPSTREAM_CALLS).hasValue(0);
     }
 
     @Test

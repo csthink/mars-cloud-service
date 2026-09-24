@@ -50,6 +50,7 @@ public final class GatewayIngressFilter implements WebFilter, Ordered {
         InetSocketAddress local = request.getLocalAddress();
         if (local != null && local.getPort() == managementPort) return chain.filter(exchange);
         try {
+            GatewayRawPathPolicy.validate(request.getURI().getRawPath());
             InetSocketAddress remote = request.getRemoteAddress();
             if (remote == null || remote.getAddress() == null)
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing TCP peer address");

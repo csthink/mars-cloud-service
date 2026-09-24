@@ -31,6 +31,8 @@
 
 对 API 请求中已验证的 Bearer 令牌，网关要求合法的 `sid` 声明，并通过响应式 Redis 读取会话撤销状态。已撤销或 `sid` 无效时返回 `62002/401`；撤销状态最多缓存 5 秒。Redis 不可用且没有未过期缓存时返回 `63005/503`，请求不会转发给业务服务。匿名公开读取和认证 Host 的签发方端点无需查询 Redis。Redis 地址与库号由标准 `SPRING_DATA_REDIS_*` 环境变量提供；管理端口的健康检查包含 Redis 状态。
 
+`/*/v1/admin/**` 需要已验证令牌中的 `client_id=console`，且请求来源 IP 必须位于 `mars.gateway.admin.allowed-cidrs`。该键放在 Nacos 的 `DEFAULT_GROUP/mars-cloud-gateway.yaml`，填写逗号分隔的 IP 字面量或 CIDR，不在版本库中保存具体地址。未配置或配置为空时，全部管理请求返回 `62003/403`。Nacos 配置刷新后，网关只在整份列表解析成功时替换白名单；非法更新产生告警并保留上一份有效规则。来源 IP 取自网关已核对的 TCP 对端或可信代理链，外部自报的 `X-Forwarded-For` 不直接参与判断。路径含编码斜杠、编码点、`..` 段、重复斜杠或分号参数时，在安全链匹配前返回 400。
+
 API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为 `https://flippoabc.com`、`https://word.flippoabc.com`、`https://console.flippoabc.com`；允许 GET、POST、PUT、PATCH、DELETE、OPTIONS，以及 Authorization、Content-Type、Accept、Idempotency-Key 请求头。未列入的来源被拒绝，不提供凭据型跨域许可。local / test 如需浏览器开发服务器跨域，用 `MARS_GATEWAY_CORS_LOCAL_ORIGINS` 提供以逗号分隔的完整回环 origin，例如 `http://127.0.0.1:5173`；正式环境不接受该配置。认证域名及 `/userinfo` 不提供跨域许可。
 
 ## 来源地址与请求头

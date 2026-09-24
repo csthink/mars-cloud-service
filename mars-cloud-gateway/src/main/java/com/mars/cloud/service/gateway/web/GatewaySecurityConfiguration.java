@@ -44,6 +44,7 @@ public class GatewaySecurityConfiguration {
                                                           MarsReactiveSecurityConfigurer configurer,
                                                           GatewaySessionRevocation revocation,
                                                           ReactiveSecurityErrors securityErrors,
+                                                          GatewayAdminIpAllowlist adminIpAllowlist,
                                                           ErrorWebExceptionHandler gatewayErrors,
                                                           Environment environment) {
         boolean localTest = GatewayHostPolicy.isLocalTest(environment);
@@ -71,7 +72,9 @@ public class GatewaySecurityConfiguration {
                         .anyExchange().authenticated())
                 .addFilterBefore(new GatewaySessionRevocationWebFilter(
                         request -> isApiRequest(request, request.getPath().pathWithinApplication(), localTest),
-                        revocation, securityErrors, gatewayErrors), SecurityWebFiltersOrder.AUTHORIZATION);
+                        revocation, securityErrors, gatewayErrors), SecurityWebFiltersOrder.AUTHORIZATION)
+                .addFilterAfter(new GatewayAdminAccessWebFilter(adminIpAllowlist, securityErrors),
+                        SecurityWebFiltersOrder.AUTHORIZATION);
         return configurer.configure(http).build();
     }
 
