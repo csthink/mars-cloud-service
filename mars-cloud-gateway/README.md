@@ -34,6 +34,31 @@ API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为
 刻意**不开** `discovery.locator`：开了以后注册中心里的每个服务都会被自动暴露，
 网关就不再是「显式声明的唯一入口」。新增业务服务时在这里加一条路由。
 
+## 限流
+
+网关经 Sentinel 组件按路由、API 分组与客户端地址限流。规则只从 Nacos 读取，Group 为 `SENTINEL_GROUP`，与应用配置同一个命名空间：
+
+| Data ID | 内容 |
+| --- | --- |
+| `mars-cloud-gateway-sentinel-gw-api-group-rules.json` | API 分组，例如回调路径 `/order/v1/callbacks/**` 组成的 `order-callbacks` |
+| `mars-cloud-gateway-sentinel-gw-flow-rules.json` | 网关限流规则：按路由 ID 或分组名，可按客户端地址分别计数 |
+
+- 两个配置缺少、为空白或写错时，网关启动失败；某类规则不需要时写 `[]`。
+- 运行中修改后不重启即生效；写错、删除或清空时保留上一批规则，并写一行 ERROR。
+- 按客户端地址计数用「来源地址与请求头」一节核对后的地址（`GatewayIngressFilter` 写入的交换属性），不用 TCP 对端地址。
+- 被拒绝的请求返回 429 与 `63006`，不逐条写 WARN；次数见指标 `mars.sentinel.requests.blocked`。
+
+本机基线在 service 仓的 `dev/config/sentinel/`：七条路由各一条按客户端地址的规则（每个地址每秒 50 次），
+`order-callbacks` 分组一条不区分地址的总量规则（每秒 100 次，支付渠道的回调来源地址不固定）。生产阈值随部署配置给出。
+本机中间件初始化会把它写进基准命名空间，隔离环境的命名空间从基准命名空间复制；已有环境用下面的命令把基线写进
+`.env` 指定的命名空间（同名覆盖）：
+
+```bash
+python3 sentinel-rules.py --env-file .env publish
+```
+
+规则格式、校验与指标见框架仓 `mars-cloud-sentinel-spring-boot-starter` 的使用说明。
+
 ## 响应契约
 
 网关与业务服务返回**同一种信封**（`mars-cloud-common` 的 `UnifyResponse`），
@@ -46,6 +71,7 @@ API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为
 | 目标服务在注册中心里没有可用实例 | 网关 | 503 | `success:false`、`code:"63002"` |
 | 已选中实例但连接失败（拒绝连接、主机名解析失败） | 网关 | 502 | `success:false`、`code:"63003"` |
 | 连接已建立但目标服务在规定时间内未响应 | 网关 | 504 | `success:false`、`code:"63004"` |
+| 请求被限流规则拒绝（见「限流」） | 网关 | 429 | `success:false`、`code:"63006"` |
 | 其他无法归类的异常 | 网关 | 对应状态 | `code` 为 HTTP 状态码本身（如 `"500"`），与业务服务的兜底约定一致 |
 
 `message` 走 i18n（`i18n/error-code*.properties`，按请求的 `Accept-Language` 选择）。
@@ -81,8 +107,10 @@ cp ../.env.example .env  # 填写本机 Nacos Namespace 与账号
 
 - `COMMON/shared-common.yaml`
 - `DEFAULT_GROUP/mars-cloud-gateway.yaml`
+- `SENTINEL_GROUP/mars-cloud-gateway-sentinel-gw-api-group-rules.json`
+- `SENTINEL_GROUP/mars-cloud-gateway-sentinel-gw-flow-rules.json`
 
-两条都必须存在（网关不接受 `optional:` 导入）。应用配置里可以只放一个非敏感的版本标记：
+四条都必须存在（网关不接受 `optional:` 导入，缺少限流规则时也不启动）。两条限流规则用「限流」一节的命令写入。应用配置里可以只放一个非敏感的版本标记：
 
 ```yaml
 mars:
@@ -115,6 +143,16 @@ mvn -f .. package                 # 网关与 UPMS 都需要 package
 ./verify-e2e.sh                   # 需要本机 Nacos 与本目录的 .env
 ```
 
+`verify-sentinel-e2e.sh` 启动网关的真实进程，经 Nacos 下发限流规则并核对：缺少规则配置时启动失败、修改后不重启生效、
+按客户端地址分别计数、回调分组计总数、写错与删除都保留上一批、重启后规则仍在、被拒绝的响应是 429 与 `63006`、
+只监听业务端口与管理端口、Sentinel 不写文件。它以可信代理数量 1 启动网关，放行的请求打到没有实例的 order 服务、以 503 结束，
+不需要其他服务；结束时把 `dev/config/sentinel/` 的基线写回命名空间。
+
+```bash
+mvn -f .. package -pl mars-cloud-gateway -am
+./verify-sentinel-e2e.sh          # 需要本机 Nacos 与本目录的 .env；SENTINEL_E2E_ENV_FILE 可另指环境文件
+```
+
 `verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、sample 路由及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。
 
 ## 配置：分层与来源
@@ -127,6 +165,7 @@ mvn -f .. package                 # 网关与 UPMS 都需要 package
 | local profile | `src/main/resources/config/application-local.yml` | ✅ | **仅**行为开关（时区）。**刻意不含任何连接信息** |
 | Nacos 共享配置 | `COMMON/shared-common.yaml` | ❌ | 跨服务的非敏感动态默认值 |
 | Nacos 应用配置 | `DEFAULT_GROUP/mars-cloud-gateway.yaml` | ❌ | 网关的非敏感动态覆盖值 |
+| Nacos 限流规则 | `SENTINEL_GROUP/mars-cloud-gateway-sentinel-gw-*-rules.json` | ❌ | API 分组与网关限流规则，见「限流」 |
 | 环境取值 | 环境变量（开发时用 `.env` 承载） | ❌ `.env` 忽略；[`.env.example`](../.env.example) 是模板 | 地址、Namespace、账号 |
 
 `application-local.yml` 能进版本库，是因为它**不含任何环境相关的取值**；这条由 `LocalConfigHygieneTest` 守护。

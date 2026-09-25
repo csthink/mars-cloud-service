@@ -253,6 +253,30 @@ class SeededApplicationConfigurations(unittest.TestCase):
         self.assertIn('mars-cloud-monitor', checked)
 
 
+class SeededGatewayRules(unittest.TestCase):
+    def test_the_gateway_rule_configurations_are_seeded_as_json_from_the_baseline_files(self):
+        """The gateway does not start without its two Sentinel rule configurations."""
+        baseline = Path(__file__).resolve().parents[1] / 'config' / 'sentinel'
+        for name in ('mars-cloud-gateway-sentinel-gw-api-group-rules.json',
+                     'mars-cloud-gateway-sentinel-gw-flow-rules.json'):
+            content = init.CONFIGS[('SENTINEL_GROUP', name)]
+            self.assertEqual(content, (baseline / name).read_text(encoding='utf-8'))
+            self.assertIsInstance(json.loads(content), list)
+            self.assertEqual(init.config_type(name), 'json')
+        self.assertEqual(init.config_type('mars-cloud-gateway.yaml'), 'yaml')
+
+    def test_the_base_namespace_expects_the_json_type(self):
+        e = Mock()
+        e.args.slots = [0]
+        e.args.base_namespace = 'mars-local'
+        e.nacos_configurations = []
+        with patch.object(init, 'numbered_namespaces', return_value=set()):
+            expected = init.expected_nacos(e)
+        rules = expected[('mars-local', 'SENTINEL_GROUP', 'mars-cloud-gateway-sentinel-gw-flow-rules.json')]
+        self.assertEqual(rules['type'], 'json')
+        self.assertTrue(rules['checked'])
+
+
 class NumberedEnvironmentNamespaces(unittest.TestCase):
     """A numbered environment namespace is filled by an external workflow: initialization seeds only
     the missing items there and never compares content, while every other namespace stays strict."""
@@ -278,8 +302,8 @@ class NumberedEnvironmentNamespaces(unittest.TestCase):
     def test_existing_numbered_content_is_neither_compared_nor_overwritten(self):
         self.initialize()
         written = {key for key, _ in self.api.writes if key != 'namespace'}
-        seeded = {('mars-slot-2', 'DEFAULT_GROUP', name) for name in
-                  ('mars-cloud-auth-service.yaml', 'mars-cloud-upms-service.yaml', 'mars-cloud-sample-service.yaml', 'mars-cloud-monitor.yaml')}
+        present = {('COMMON', 'shared-common.yaml'), ('DEFAULT_GROUP', 'mars-cloud-gateway.yaml')}
+        seeded = {('mars-slot-2', group, data_id) for group, data_id in init.CONFIGS if (group, data_id) not in present}
         self.assertEqual(written, seeded | {('mars-local', group, data_id) for group, data_id in init.CONFIGS})
         self.assertEqual(self.api.values[('mars-slot-2', 'COMMON', 'shared-common.yaml')], dict(content='synchronized: base\n', type='yaml'))
         self.assertEqual(self.api.values[('mars-slot-2', 'DEFAULT_GROUP', 'mars-cloud-gateway.yaml')], dict(content='synchronized: gateway\n', type='text'))

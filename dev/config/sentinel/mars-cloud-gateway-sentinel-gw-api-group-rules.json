@@ -1,0 +1,8 @@
+[
+  {
+    "apiName": "order-callbacks",
+    "predicateItems": [
+      {"pattern": "/order/v1/callbacks/**", "matchStrategy": 1}
+    ]
+  }
+]

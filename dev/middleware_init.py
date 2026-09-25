@@ -1,6 +1,7 @@
 """Idempotent initialization with explicit content and migration checks."""
 import hashlib
 import json
+from pathlib import Path
 import secrets
 import urllib.error
 import urllib.parse
@@ -15,6 +16,16 @@ CONFIGS = {
     ('DEFAULT_GROUP', 'mars-cloud-sample-service.yaml'): 'mars:\n  sample:\n    config-revision: local-1\n',
     ('DEFAULT_GROUP', 'mars-cloud-monitor.yaml'): 'mars:\n  monitor:\n    config-revision: local-1\n',
 }
+# The gateway refuses to start without its Sentinel rule configurations; the local baseline lives in
+# config/sentinel so the gateway tooling and this seed read the same files.
+SENTINEL_GROUP = 'SENTINEL_GROUP'
+for _rules in sorted((Path(__file__).resolve().parent / 'config' / 'sentinel').glob('*-rules.json')):
+    CONFIGS[(SENTINEL_GROUP, _rules.name)] = _rules.read_text(encoding='utf-8')
+
+
+def config_type(data_id):
+    """Nacos configuration type of a seed, taken from the data ID extension."""
+    return 'json' if data_id.endswith('.json') else 'yaml'
 
 
 class HttpFailure(Failure):
@@ -106,7 +117,8 @@ def expected_nacos(e):
     for n in e.args.slots:
         namespace = e.args.base_namespace if n == 0 else e.args.namespace_prefix + str(n)
         for (group, data_id), content in CONFIGS.items():
-            expected[(namespace, group, data_id)] = dict(content=content, type='yaml', checked=namespace not in numbered)
+            expected[(namespace, group, data_id)] = dict(content=content, type=config_type(data_id),
+                                                         checked=namespace not in numbered)
     for row in e.nacos_configurations:
         expected[(row['namespace'], row['group'], row['data_id'])] = dict(
             content=row['content'], type=row['type'], checked=row['namespace'] not in numbered)

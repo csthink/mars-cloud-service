@@ -1,0 +1,10 @@
+[
+  {"resource": "auth-issuer", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "auth-api", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "product", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "order", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "notice", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "upms", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "sample", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "order-callbacks", "resourceMode": 1, "count": 100, "intervalSec": 1}
+]
