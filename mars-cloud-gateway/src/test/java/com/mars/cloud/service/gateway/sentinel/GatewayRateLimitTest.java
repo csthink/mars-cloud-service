@@ -8,7 +8,7 @@ import com.mars.cloud.service.gateway.web.GatewayIngressFilter;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,21 +50,25 @@ class GatewayRateLimitTest {
     @Autowired
     MeterRegistry registry;
 
-    @BeforeAll
-    static void limitTheRoute() {
-        TestSentinelRules.publish(FLOW, """
-                [{"resource":"rate-limit-upstream","count":1,"intervalSec":60,"paramItem":{"parseStrategy":0}}]
-                """);
-    }
+    @Autowired
+    TestSentinelRules.Rules rules;
 
     @AfterAll
-    static void clear() {
-        TestSentinelRules.reset();
+    static void stopUpstream() {
         UPSTREAM.stop(0);
+    }
+
+    /** 规则在运行中下发到本用例的上下文，结束时清空，不影响复用这个上下文的其他用例。 */
+    @AfterEach
+    void clearRules() {
+        rules.publish(FLOW, "[]");
     }
 
     @Test
     void rejectedRequestsGetTheGatewayEnvelope() {
+        rules.publish(FLOW, """
+                [{"resource":"rate-limit-upstream","count":1,"intervalSec":60,"paramItem":{"parseStrategy":0}}]
+                """);
         client.get().uri("/rate-limit-upstream/ok").header("Host", "api.flippoabc.com")
                 .exchange().expectStatus().isOk();
 
