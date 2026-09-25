@@ -26,7 +26,10 @@ public enum GatewayErrorCode implements ErrorCode {
     UPSTREAM_CONNECT_FAILED(63003, HttpStatus.BAD_GATEWAY),
 
     /** 连接已建立，但目标服务在规定时间内没有返回响应。 */
-    UPSTREAM_TIMEOUT(63004, HttpStatus.GATEWAY_TIMEOUT);
+    UPSTREAM_TIMEOUT(63004, HttpStatus.GATEWAY_TIMEOUT),
+
+    /** 请求被 Sentinel 按路由、API 分组或客户端地址的限流规则拒绝。 */
+    RATE_LIMITED(63006, HttpStatus.TOO_MANY_REQUESTS);
 
     /** 区间起点（含），与框架分配表的 {@code gateway} 段一致。 */
     public static final int RANGE_START = 63000;

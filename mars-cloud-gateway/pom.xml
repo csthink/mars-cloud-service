@@ -46,6 +46,19 @@
         </dependency>
 
         <!--
+          限流：规则只从 Nacos 的两个 Data ID 读取（gw-api-group、gw-flow），缺少时启动失败；
+          网关适配由部署物自己声明，Sentinel 组件本身不带入。
+        -->
+        <dependency>
+            <groupId>com.mars.cloud</groupId>
+            <artifactId>mars-cloud-sentinel-spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
+        </dependency>
+
+        <!--
           直接依赖 common 取统一响应信封与错误码契约。
           网关是响应式栈，不能引 Servlet 栈的 mvc starter，信封只能从 common 拿。
         -->

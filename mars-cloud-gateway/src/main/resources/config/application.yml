@@ -59,6 +59,11 @@ mars:
     proxy:
       trusted-hop-count: ${MARS_GATEWAY_TRUSTED_HOP_COUNT:0}
       direct-peer-cidrs: ${MARS_GATEWAY_DIRECT_PEER_CIDRS:}
+  sentinel:
+    gateway:
+      # 按客户端地址限流用 GatewayIngressFilter 核对后写入的地址，不用 TCP 对端地址；
+      # 取值必须等于 GatewayIngressFilter.CLIENT_IP_ATTRIBUTE，由测试守住
+      client-ip-attribute: com.mars.cloud.service.gateway.web.GatewayIngressFilter.clientIp
   env:
     # 命中时失败响应回带调试详情，语义与业务服务一致；上线前确认生产 profile 不在其中。
     dev-profiles:

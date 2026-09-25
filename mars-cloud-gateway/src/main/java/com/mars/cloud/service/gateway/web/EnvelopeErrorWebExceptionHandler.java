@@ -2,6 +2,7 @@ package com.mars.cloud.service.gateway.web;
 
 import com.mars.cloud.common.response.UnifyResponse;
 import com.mars.cloud.service.gateway.env.EnvProfilesProperties;
+import com.mars.cloud.service.gateway.error.GatewayErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.webflux.error.ErrorWebExceptionHandler;
@@ -91,6 +92,11 @@ public class EnvelopeErrorWebExceptionHandler implements ErrorWebExceptionHandle
 
     private void logResolved(ServerHttpRequest request, ResolvedError resolved, Throwable ex) {
         String where = request.getMethod() + " " + request.getURI().getPath();
+        if (resolved.code() == GatewayErrorCode.RATE_LIMITED.getCode()) {
+            // 限流在受攻击时成批出现，逐条 WARN 会淹没日志；次数由指标 mars.sentinel.requests.blocked 记录
+            log.debug("网关限流 {} code={} {}: {}", resolved.status().value(), resolved.code(), where, resolved.detail());
+            return;
+        }
         if (resolved.isUnclassified()) {
             log.error("网关错误 {} code={} {}", resolved.status().value(), resolved.code(), where, ex);
         } else {

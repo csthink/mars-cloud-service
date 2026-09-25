@@ -1,5 +1,7 @@
 package com.mars.cloud.service.gateway.web;
 
+import com.alibaba.csp.sentinel.slots.block.flow.FlowException;
+import com.alibaba.csp.sentinel.slots.block.flow.param.ParamFlowException;
 import com.mars.cloud.service.gateway.error.GatewayErrorCode;
 import io.netty.channel.ConnectTimeoutException;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ErrorEnvelopeResolverTest {
 
     private final ErrorEnvelopeResolver resolver = new ErrorEnvelopeResolver();
+
+    @Test
+    void sentinelBlockMapsToRateLimitedWithoutEchoingTheRule() {
+        ResolvedError resolved = resolver.resolve(new ParamFlowException("rate-limit-probe", "detail from the rule"));
+
+        assertThat(resolved.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(resolved.code()).isEqualTo(GatewayErrorCode.RATE_LIMITED.getCode());
+        assertThat(resolved.detail()).isEqualTo("被 Sentinel 规则拦截：ParamFlowException");
+        assertThat(resolved.isUnclassified()).as("限流是运行态事件").isFalse();
+    }
+
+    @Test
+    void wrappedSentinelBlockIsRecognised() {
+        ResolvedError resolved = resolver.resolve(new IllegalStateException(new FlowException("probe")));
+
+        assertThat(resolved.code()).isEqualTo(GatewayErrorCode.RATE_LIMITED.getCode());
+        assertThat(resolved.detail()).endsWith("FlowException");
+    }
 
     @Test
     void noInstanceMapsToUpstreamNoInstanceWithExceptionStatus() {

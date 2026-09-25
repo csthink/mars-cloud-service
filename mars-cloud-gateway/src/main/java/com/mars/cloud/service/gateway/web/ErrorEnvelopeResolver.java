@@ -1,5 +1,6 @@
 package com.mars.cloud.service.gateway.web;
 
+import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.mars.cloud.service.gateway.error.GatewayErrorCode;
 import org.springframework.cloud.gateway.support.NotFoundException;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,8 @@ import java.util.concurrent.TimeoutException;
  *
  * <p>映射规则（按判断顺序）：
  * <ol>
+ *   <li>Sentinel 的拦截异常（{@link BlockException#isBlockException} 为真，含包装）：
+ *       {@link GatewayErrorCode#RATE_LIMITED}，状态 429。</li>
  *   <li>{@link NotFoundException}：负载均衡找不到实例 → {@link GatewayErrorCode#UPSTREAM_NO_INSTANCE}。
  *       状态取异常自带的值（默认 503；开了 {@code loadbalancer.use404} 时是 404）。</li>
  *   <li>{@link ResponseStatusException} 且状态为 404：没有路由匹配 → {@link GatewayErrorCode#ROUTE_NOT_FOUND}。</li>
@@ -31,6 +34,9 @@ import java.util.concurrent.TimeoutException;
 public final class ErrorEnvelopeResolver {
 
     public ResolvedError resolve(Throwable ex) {
+        if (BlockException.isBlockException(ex)) {
+            return ResolvedError.of(GatewayErrorCode.RATE_LIMITED, "被 Sentinel 规则拦截：" + blockedBy(ex));
+        }
         if (ex instanceof NotFoundException notFound) {
             return new ResolvedError(
                     notFound.getStatusCode(),
@@ -55,5 +61,15 @@ public final class ErrorEnvelopeResolver {
             return ResolvedError.of(GatewayErrorCode.UPSTREAM_TIMEOUT, ex.getMessage());
         }
         return ResolvedError.ofStatus(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
+    }
+
+    /** 拦截异常的类名，例如 ParamFlowException；不回显规则内容。 */
+    private static String blockedBy(Throwable ex) {
+        for (Throwable current = ex; current != null; current = current.getCause()) {
+            if (current instanceof BlockException) {
+                return current.getClass().getSimpleName();
+            }
+        }
+        return ex.getClass().getSimpleName();
     }
 }
