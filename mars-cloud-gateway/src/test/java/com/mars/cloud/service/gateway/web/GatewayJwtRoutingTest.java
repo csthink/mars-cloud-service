@@ -210,7 +210,7 @@ class GatewayJwtRoutingTest {
         revokedKeys.add(GatewaySessionRevocation.KEY_PREFIX + sid);
         web.get().uri("/auth/v1/me").header("Host", "api.flippoabc.com")
                 .headers(headers -> headers.setBearerAuth(signedToken(sid)))
-                .exchange().expectStatus().isUnauthorized().expectBody().jsonPath("$.code").isEqualTo("62002");
+                .exchange().expectStatus().isUnauthorized().expectBody().jsonPath("$.code").isEqualTo("62007");
         verify(redis).hasKey(GatewaySessionRevocation.KEY_PREFIX + sid);
         assertThat(UPSTREAM_CALLS).hasValue(0);
     }

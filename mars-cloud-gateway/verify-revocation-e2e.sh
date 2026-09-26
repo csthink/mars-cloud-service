@@ -146,7 +146,7 @@ PY
 docker exec "$REDIS_CONTAINER" redis-cli -n 2 SET "mars:auth:revoked:sid:$sid" 1 EX 900 >/dev/null
 sleep 6
 before="$(upstream_count)"
-expect "revoked session" /auth/v1/me allow api.flippoabc.com 401 62002
+expect "revoked session" /auth/v1/me allow api.flippoabc.com 401 62007
 expect "missing sid" /auth/v1/me missing-sid api.flippoabc.com 401 62002
 expect "invalid sid" /auth/v1/me invalid-sid api.flippoabc.com 401 62002
 if [ "$(upstream_count)" != "$before" ]; then echo "Rejected requests reached the upstream." >&2; exit 1; fi

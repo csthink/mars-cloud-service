@@ -14,7 +14,10 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-/** Checks the verified JWT's session before a routed API request reaches its upstream. */
+/**
+ * Checks the verified JWT's session before a routed API request reaches its upstream: a missing or malformed
+ * {@code sid} is an invalid token, a revoked {@code sid} is a revoked session.
+ */
 final class GatewaySessionRevocationWebFilter implements WebFilter {
     private final Predicate<ServerHttpRequest> apiRequest;
     private final GatewaySessionRevocation revocation;
@@ -53,7 +56,7 @@ final class GatewaySessionRevocationWebFilter implements WebFilter {
                     }
                     return revocation.isRevoked(sid)
                             .flatMap(revoked -> revoked
-                                    ? securityErrors.write(exchange, SecurityErrorCode.TOKEN_INVALID)
+                                    ? securityErrors.write(exchange, SecurityErrorCode.SESSION_REVOKED)
                                     : chain.filter(exchange))
                             .onErrorResume(GatewaySessionRevocation.StoreUnavailableException.class,
                                     failure -> gatewayErrors.handle(exchange, failure));
