@@ -2,7 +2,7 @@
 
 提供 Authorization Code + PKCE S256、OpenID Connect 发现、公钥发布、持久化授权和 Redis 登录会话。业务端口默认 8101，HTTP 管理端口为 9101。没有 context path。
 
-短信验证码登录已接入现有授权码流程。当前只有 local / test 的受保护 mock 发送方；正式短信发送方尚未接入，生产发码请求返回 503，不建立短信挑战。默认口令表单只供显式启用的 local / test 验证；生产没有默认用户。公共客户端续期、设备数量限制、设备撤销和定制登录页尚未提供。
+短信验证码登录已接入现有授权码流程。当前只有 local / test 的受保护 mock 发送方；正式短信发送方尚未接入，生产发码请求返回 503，不建立短信挑战。默认口令表单只供显式启用的 local / test 验证；生产没有默认用户。公共客户端续期和定制登录页尚未提供；设备上限与撤销见「设备会话」。
 
 ## 端点与客户端
 
@@ -28,7 +28,17 @@
 | `console` | `mars-cloud-gateway`、`mars-cloud-auth-service`、`mars-cloud-product-service`、`mars-cloud-order-service`、`mars-cloud-notice-service`、`mars-cloud-upms-service` |
 | `flippo-book`、`wonder-lab`、`english-word-card`、`csthink-assistant` | `mars-cloud-gateway`、`mars-cloud-auth-service`、`mars-cloud-product-service`、`mars-cloud-notice-service` |
 
-访问令牌有效期 15 分钟，只包含 `iss/sub/aud/exp/iat/jti/client_id/sid/tenant_id/scope`，`tenant_id=default`。浏览器访问令牌的 `sid` 对应登录后 Spring Session 标识；原生访问令牌使用独立授权会话。ID token 的 audience 是客户端，`sid` 使用 Spring Security 的浏览器会话哈希，供协议登出关联。令牌不含手机号、头像或权限清单。
+访问令牌有效期 15 分钟，只包含 `iss/sub/aud/exp/iat/jti/client_id/sid/tenant_id/scope`，`tenant_id=default`。浏览器访问令牌的 `sid` 对应登录后 Spring Session 标识；原生访问令牌的 `sid` 是该授权记录的标识，与浏览器会话不同。ID token 的 audience 是客户端，`sid` 使用 Spring Security 的浏览器会话哈希，供协议登出关联。令牌不含手机号、头像或权限清单。
+
+## 设备会话
+
+一个账号最多 3 台设备同时在线。一个浏览器登录会话算一台（门户与各产品站点在同一浏览器共用它，只算一台）；原生客户端的一条授权记录算一台。每台设备在 `sys_session` 有一行：浏览器行在登录成功后写入，签发授权码时更新 `last_seen_at`；原生行在签发授权码时写入，授权记录保存访问令牌（兑换或续期）时更新 `last_seen_at`。
+
+第 4 台设备登录时，服务先核对已有各行的后备存储：浏览器行的 Redis 会话已过期、原生行的授权记录已不存在或令牌全部失效时，该行标记 `revoke_reason=EXPIRED`，不占名额。仍在用的设备满 3 台时，`last_seen_at` 最早的一台被踢出，`sys_login_log` 写一行 `SESSION_REVOKED`，`details` 记录原因、被踢会话与触发方类型，不含令牌。
+
+撤销在一个数据库事务内完成：删除原生授权记录（刷新令牌随之失效）、标记 `sys_session` 行、删除浏览器 Spring Session、向 Redis 写入 `mars:auth:revoked:sid:<sid>`（值 `1`，保留 15 分钟，覆盖访问令牌寿命）。写入 Redis 失败时事务回滚，撤销视为未完成。网关在验签后查询该键，被撤销会话的访问令牌在 5 秒内得到 `62007/401`；浏览器站点据此回到登录页，客户端据此清除本地凭据。认证服务与网关必须使用同一个 Redis 库。
+
+撤销后的行保留 30 天，由 `DeviceSessionService.purgeRevoked` 幂等删除（`sys_session.revoked_at` 有索引）；每日调度在任务调度组件接入后配置，当前需要手动或由后续任务触发。禁用账号与管理端踢出复用同一撤销方法，管理接口尚未提供。
 
 ## 部署配置
 
@@ -114,6 +124,12 @@ cd mars-cloud-auth-service
 ./mars-cloud-auth-service/verify-e2e.sh
 ```
 
-脚本自行启动和停止打包进程，使用独立 jar 副本，验证短信登录、同源与 CSRF 拒绝、图形 PNG、错误阈值、发码频控、预算暂停及恢复、登录审计、会话更换、PKCE、六客户端 audience、原生同意与取消、并发兑换、MySQL 约束及事务、Redis 主体索引、重启、协议登出、正式配置和拒绝启动路径；日志只允许已说明的 MySQL/Flyway 版本提示及刻意触发的授权撤销提示。退出码非零表示失败，完整结果保留在 ignored `dev/.local/auth-acceptance-*`。
+脚本自行启动和停止打包进程，使用独立 jar 副本，验证短信登录、同源与 CSRF 拒绝、图形 PNG、错误阈值、发码频控、预算暂停及恢复、登录审计、会话更换、PKCE、六客户端 audience、原生同意与取消、并发兑换、MySQL 约束及事务、Redis 主体索引、设备上限的并发准入、撤销副作用与回滚、失效判定、保留期、风控计数有效期、重启、设备踢出后的登录态、协议登出、正式配置和拒绝启动路径；日志只允许已说明的 MySQL/Flyway 版本提示及刻意触发的授权撤销提示。退出码非零表示失败，完整结果保留在 ignored `dev/.local/auth-acceptance-*`。
+
+被踢出设备经网关得到 `62007/401` 的核对需要网关进程，由 `verify-session-e2e.sh` 完成：它用打包后的认证服务与网关（网关以可信代理数量 1、对端 `127.0.0.1/32` 启动，经 Nacos 发现认证服务），运行 `scripts/verify_devices.py --gateway`，核对第 4 台设备登录后被踢设备的令牌在 5 秒内被网关拒绝、其余设备照常通过、同一浏览器的门户与产品站只算一台。运行前须打包两个模块，两份模块 `.env` 齐全，并设置 `SESSION_E2E_CA_FILE`（本次 HTTPS CA）、`SESSION_E2E_TRUST_STORE`（含该 CA 的 PKCS12 信任库）与 `SESSION_E2E_TRUST_PASSWORD`。
+
+```bash
+SESSION_E2E_CA_FILE=... SESSION_E2E_TRUST_STORE=... SESSION_E2E_TRUST_PASSWORD=... ./mars-cloud-auth-service/verify-session-e2e.sh
+```
 
 浏览器验收可在服务已启动时运行 `scripts/browser_check.py`，通过 `--base`、`--ca`、`--output` 指定本地 issuer、CA 和受保护输出文件；在独立浏览器打开输出文件中的授权 URL，登录并同意后，回跳接收器验证 state 与兑换结果。它只监听回环地址，不打印令牌，不替代自动验收。

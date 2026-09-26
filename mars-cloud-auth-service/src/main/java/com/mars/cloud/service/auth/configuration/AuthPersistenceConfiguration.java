@@ -1,15 +1,21 @@
 package com.mars.cloud.service.auth.configuration;
 
 import com.mars.cloud.service.auth.application.AuthSessionService;
+import com.mars.cloud.service.auth.application.DeviceSessionService;
+import com.mars.cloud.service.auth.infrastructure.session.RevocationStore;
 import com.mars.cloud.service.auth.infrastructure.authorization.SessionAuthorizationService;
 import com.mars.cloud.service.auth.infrastructure.client.SysClientRegisteredClientRepository;
 import java.time.Clock;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.server.authorization.*;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.session.Session;
+import org.springframework.session.SessionRepository;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration(proxyBeanMethods=false)
 public class AuthPersistenceConfiguration {
@@ -26,6 +32,11 @@ public class AuthPersistenceConfiguration {
             if (repository.findByClientId(id)==null) throw new IllegalStateException("Client registration is unavailable");
         }
         return repository;
+    }
+    /** Looks the authorization service up lazily: it decorates AuthSessionService, which itself needs this bean. */
+    @Bean DeviceSessionService deviceSessionService(JdbcTemplate jdbc,PlatformTransactionManager manager,Clock clock,
+            SessionRepository<? extends Session> sessions,ObjectProvider<OAuth2AuthorizationService> authorizations,RevocationStore revocations) {
+        return new DeviceSessionService(jdbc,manager,clock,sessions,authorizations::getObject,revocations);
     }
     @Bean OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc,RegisteredClientRepository clients,AuthSessionService sessions) {
         return new SessionAuthorizationService(new JdbcOAuth2AuthorizationService(jdbc,clients),sessions,clients);

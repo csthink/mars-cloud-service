@@ -14,6 +14,8 @@ public final class ClientPolicy {
     public static final Set<String> FORMAL = Set.of("portal", "flippo-book", "wonder-lab",
             "english-word-card", "console", "csthink-assistant");
     public static final Set<String> TEST = Set.of("test-browser", "test-native");
+    /** Access token lifetime; the revocation marker written when a device is revoked must outlive it. */
+    public static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
     private ClientPolicy() { }
     public static boolean nativeClient(String id) {
         return "csthink-assistant".equals(id) || "test-native".equals(id);
@@ -40,7 +42,7 @@ public final class ClientPolicy {
                 .postLogoutRedirectUris(values -> values.addAll(logouts))
                 .clientSettings(ClientSettings.builder().requireProofKey(true)
                         .requireAuthorizationConsent(nativeClient(id)).build())
-                .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(Duration.ofMinutes(15))
+                .tokenSettings(TokenSettings.builder().accessTokenTimeToLive(ACCESS_TOKEN_TTL)
                         .refreshTokenTimeToLive(Duration.ofDays(30)).reuseRefreshTokens(false).build());
         if (nativeClient(id)) builder.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN);
         return builder.build();

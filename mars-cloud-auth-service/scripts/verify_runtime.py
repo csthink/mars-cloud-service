@@ -191,9 +191,11 @@ with running('local-before',ENV) as log:
     probe('com.mars.cloud.service.auth.verification.SmsAuditProbe',ENV,str(STATE/'sms-account-id'))
     protocol('before-restart')
     probe('com.mars.cloud.service.auth.configuration.SessionProbe',ENV)
+    probe('com.mars.cloud.service.auth.configuration.DeviceSessionProbe',ENV)
 verify_log(log)
 with running('local-after',ENV) as log:
     protocol('after-restart')
+    subprocess.run(['python3',str(MODULE/'scripts/verify_devices.py'),'--base',BASE,'--ca',str(CA)],env=ENV,check=True,timeout=300)
 verify_log(log)
 probe('com.mars.cloud.service.auth.verification.SmsRiskProbe',ENV)
 budget_resume()
