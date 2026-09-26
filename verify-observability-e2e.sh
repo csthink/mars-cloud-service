@@ -8,7 +8,8 @@
 #
 # 前置：本机中间件已启动（追踪后端、日志后端、注册中心）；四个模块已 clean package；
 # 环境文件给出注册中心连接、端口、管理端点凭据，以及网关使用的 Redis 连接（SPRING_DATA_REDIS_HOST、SPRING_DATA_REDIS_PORT、
-# SPRING_DATA_REDIS_PASSWORD：网关的健康检查含 Redis 状态，带令牌的请求要查询会话撤销状态）；本机有 docker（临时 Grafana 用）。
+# SPRING_DATA_REDIS_PASSWORD、SPRING_DATA_REDIS_DATABASE：网关的健康检查含 Redis 状态，带令牌的请求要查询会话撤销状态）；
+# 本机有 docker（临时 Grafana 用）。
 #
 set -uo pipefail
 

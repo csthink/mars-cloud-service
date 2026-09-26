@@ -57,7 +57,7 @@ gateway、sample 与 UPMS 启动前还需设置 `MARS_SECURITY_ISSUER_URI`，可
 `./verify-observability-e2e.sh` 启动网关、UPMS、sample 与监控面板，经网关发起一次到 sample 再到 UPMS 的请求，核对：
 追踪后端里这次请求是一条链、三个进程各有 span；三个进程的结构化日志带同一个 `traceId`；日志推送到日志后端后按
 `traceId` 能查回三个服务；Grafana 的日志关联字段能从日志行链到这条调用链（用临时容器核对，需要 docker）；监控面板
-发现全部实例，并在实例下线时写出日志通知。端口、管理端点与面板的凭据、追踪与日志后端地址从 sample 的 `.env` 读取，
+发现全部实例，并在实例下线时写出日志通知。端口、管理端点与面板的凭据、追踪与日志后端地址、网关使用的 Redis 连接从 sample 的 `.env` 读取，
 变量见 [`.env.example`](.env.example)。
 
 认证服务的 HTTPS、本地随机测试登录、六客户端配置与独立验收见 [模块 README](mars-cloud-auth-service/README.md)。它的标准协议端点不使用业务响应信封。

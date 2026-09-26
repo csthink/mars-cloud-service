@@ -45,11 +45,11 @@ mvn -pl mars-cloud-upms-service -am clean package
 | `mars-cloud-monitor` | `java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -jar target/mars-cloud-monitor.jar` | `cd mars-cloud-monitor && ./run-local.sh` |
 
 `run-local.sh` 会加载模块根目录的 `.env`（若存在）并以 local profile 启动。
-网关、UPMS、sample 与监控面板都需要其中的 Nacos Namespace 与账号。
+网关、UPMS、sample 与监控面板都需要其中的 Nacos Namespace 与账号；网关还需要 Redis（会话撤销查询与健康检查）。
 认证服务还需要 MySQL、Redis、持久保存的加密根密钥、明确 HTTPS issuer 和六客户端回跳配置，详见 [认证模块配置](../mars-cloud-auth-service/README.md)。业务端口可使用 HTTPS，管理端口仍使用 HTTP，并通过注册元数据 `management.scheme=http` 明确区分；管理端口只对受控网络开放。
 
-sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否则通过 issuer 元数据发现。
-两服务的 audience 分别为自己的应用名；sample 调用 UPMS 时，访问令牌的 audience 必须同时包含两者。
+网关、sample 与 UPMS 还必须配置 JWT issuer；可显式提供 JWKS 地址，否则通过 issuer 元数据发现。
+三个服务的 audience 分别为自己的应用名；经网关访问受保护接口时访问令牌须包含 `mars-cloud-gateway`，sample 调用 UPMS 时还须同时包含两者。
 缺少认证配置时启动失败；健康探针允许匿名访问，业务接口需要合法 Bearer 令牌。
 启动命令中多出的 JVM 参数见下一节。
 
@@ -141,7 +141,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 
 | profile | 用途 | 外部依赖 |
 | --- | --- | --- |
-| `local`（网关） | 本机开发 | Nacos。路由目标不必先起来 |
+| `local`（网关） | 本机开发 | Nacos、可信 JWT 签发方的公钥端点与 Redis。路由目标不必先起来 |
 | `local`（UPMS） | 本机开发 | Nacos 与可信 JWT 签发方的公钥端点。数据源与 Redis 的自动装配保持关闭 |
 | `local`（sample） | 本机开发 | Nacos 与可信 JWT 签发方的公钥端点。调用 UPMS 的端点还需要 UPMS 实例 |
 | 其他 | 部署环境 | 需要真实基础设施 |
