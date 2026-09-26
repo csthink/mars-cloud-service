@@ -6,5 +6,6 @@
   {"resource": "notice", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
   {"resource": "upms", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
   {"resource": "sample", "count": 50, "intervalSec": 1, "paramItem": {"parseStrategy": 0}},
+  {"resource": "auth-entry", "resourceMode": 1, "count": 30, "intervalSec": 60, "paramItem": {"parseStrategy": 0}},
   {"resource": "order-callbacks", "resourceMode": 1, "count": 100, "intervalSec": 1}
 ]

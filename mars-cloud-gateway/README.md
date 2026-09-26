@@ -27,7 +27,7 @@
 
 网关从 `MARS_SECURITY_ISSUER_URI` 读取签发方地址，可选从 `MARS_SECURITY_JWK_SET_URI` 读取公钥集合地址；启动前必须配置签发方。受保护请求的 Bearer 令牌须通过签名、签发方、时效与 `mars-cloud-gateway` audience 校验。网关使用响应式安全链，验证失败时返回 security starter 的统一错误信封；业务服务仍验证自己的 audience 并执行权限判断。
 
-认证 Host 的签发方端点清单允许不带访问令牌。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。
+认证 Host 的签发方端点清单允许不带访问令牌；其中发码、验证码校验、令牌与授权端点按来源地址限流，见「限流」。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。
 
 对 API 请求中已验证的 Bearer 令牌，网关要求合法的 `sid` 声明，并通过响应式 Redis 读取会话撤销状态。已撤销或 `sid` 无效时返回 `62002/401`；撤销状态最多缓存 5 秒。Redis 不可用且没有未过期缓存时返回 `63005/503`，请求不会转发给业务服务。匿名公开读取和认证 Host 的签发方端点无需查询 Redis。Redis 地址与库号由标准 `SPRING_DATA_REDIS_*` 环境变量提供；管理端口的健康检查包含 Redis 状态。
 
@@ -50,17 +50,18 @@ API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为
 
 | Data ID | 内容 |
 | --- | --- |
-| `mars-cloud-gateway-sentinel-gw-api-group-rules.json` | API 分组，例如回调路径 `/order/v1/callbacks/**` 组成的 `order-callbacks` |
+| `mars-cloud-gateway-sentinel-gw-api-group-rules.json` | API 分组：认证入口 `auth-entry`（`/login/sms/send`、`/login/sms/authenticate`、`/oauth2/token`、`/oauth2/authorize`）与回调路径 `/order/v1/callbacks/**` 组成的 `order-callbacks` |
 | `mars-cloud-gateway-sentinel-gw-flow-rules.json` | 网关限流规则：按路由 ID 或分组名，可按客户端地址分别计数 |
 
 - 两个配置缺少、为空白或写错时，网关启动失败；某类规则不需要时写 `[]`。
 - 运行中修改后不重启即生效；写错、删除或内容改为空白时保留上一批规则，并写一行 ERROR。`[]` 是合法内容，会被接受并清空该类规则。
 - 按客户端地址计数用「来源地址与请求头」一节核对后的地址（`GatewayIngressFilter` 写入的交换属性），不用 TCP 对端地址。
   路由暴露检查先于限流执行：不该暴露的路由返回 404，不计入限流。
-- 被拒绝的请求返回 429 与 `63006`，只写 DEBUG 日志，不逐条写 WARN；次数计入指标 `mars.sentinel.requests.blocked`。
-  网关接入 Spring Security 之前管理端点只暴露 `health` 与 `info`（见「管理端点与可观测性」），这个指标在那之前读不到。
+- 被拒绝的请求返回 429 与 `63006`，只写 DEBUG 日志，不逐条写 WARN；次数计入指标 `mars.sentinel.requests.blocked`，
+  经管理端口的 `prometheus` 端点以 Basic 凭据读取（见「管理端点与可观测性」），Prometheus 文本里的名字是 `mars_sentinel_requests_blocked_total`，标签 `resource` 是路由 ID 或分组名。
 
 本机基线在 service 仓的 `dev/config/sentinel/`：七条路由各一条按客户端地址的规则（每个地址每秒 50 次），
+`auth-entry` 分组一条按客户端地址的规则（每个地址每分钟 30 次，四个认证入口共用这一个计数；auth-service 自己的发码频控仍然生效），
 `order-callbacks` 分组一条不区分地址的总量规则（每秒 100 次，支付渠道的回调来源地址不固定）。生产阈值随部署配置给出。
 本机中间件初始化把这两个文件写进基准 Namespace（类型 `json`），并在所选的每个编号环境的 Namespace 里补建缺失的规则配置，
 已有的不比较、不覆盖（见 `dev/README.md`）；已有环境用下面的命令把基线写进 `.env` 指定的 Namespace（同名覆盖）：
@@ -163,13 +164,15 @@ mvn -f .. package                 # 网关与 UPMS 都需要 package
 ```
 
 `verify-sentinel-e2e.sh` 启动网关的真实进程，经 Nacos 下发限流规则并核对：缺少规则配置时启动失败、修改后不重启生效、
-按客户端地址分别计数、回调分组计总数、写错与删除都保留上一批、重启后规则仍在、被拒绝的响应是 429 与 `63006`、
-只监听业务端口与管理端口、Sentinel 不写文件。它以可信代理数量 1 启动网关，放行的请求打到没有实例的 order 服务、以 503 结束，
-不需要其他服务。脚本会改写 `.env` 所指 Namespace 里的两个规则配置，结束时把 `dev/config/sentinel/` 的基线写回，写回失败时退出码非零。
+按客户端地址分别计数、回调分组计总数、认证入口分组按客户端地址计数、拦截次数经管理端口凭据可读而匿名不可读、
+写错与删除都保留上一批、重启后规则仍在、被拒绝的响应是 429 与 `63006`、只监听业务端口与管理端口、Sentinel 不写文件。
+它以可信代理数量 1 启动网关，只请求不需要访问令牌的路径，放行的请求打到没有实例的 product 或 auth 服务、以 503 结束，不需要其他服务；
+不核对令牌，也不查询 Redis：签发方地址取 `.env` 的 `MARS_SECURITY_ISSUER_URI`，未提供时用回环占位地址，本进程关闭 Redis 健康检查项。
+脚本会改写 `.env` 所指 Namespace 里的两个规则配置，结束时把 `dev/config/sentinel/` 的基线写回，写回失败时退出码非零。
 
 ```bash
 mvn -f .. package -pl mars-cloud-gateway -am
-./verify-sentinel-e2e.sh          # 需要本机 Nacos 与本目录的 .env；SENTINEL_E2E_ENV_FILE 可另指环境文件
+./verify-sentinel-e2e.sh          # 需要本机 Nacos 与本目录的 .env（含管理端点凭据）；SENTINEL_E2E_ENV_FILE 可另指环境文件
 ```
 
 `verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、无令牌的 sample 请求及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。

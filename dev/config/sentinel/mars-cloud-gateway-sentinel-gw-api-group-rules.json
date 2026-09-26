@@ -1,5 +1,14 @@
 [
   {
+    "apiName": "auth-entry",
+    "predicateItems": [
+      {"pattern": "/login/sms/send", "matchStrategy": 0},
+      {"pattern": "/login/sms/authenticate", "matchStrategy": 0},
+      {"pattern": "/oauth2/token", "matchStrategy": 0},
+      {"pattern": "/oauth2/authorize", "matchStrategy": 0}
+    ]
+  },
+  {
     "apiName": "order-callbacks",
     "predicateItems": [
       {"pattern": "/order/v1/callbacks/**", "matchStrategy": 1}
