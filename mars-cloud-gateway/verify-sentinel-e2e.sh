@@ -6,7 +6,8 @@
 # 重启后规则仍在；被拒绝的响应是 429 与码 63006；网关只监听业务端口与管理端口；Sentinel 不写任何文件。
 #
 # 前置：本机 Nacos 已启动，命名空间里已有网关的应用配置；本目录有 .env（或用 SENTINEL_E2E_ENV_FILE 指定）；
-# 已 mvn package 出 target/mars-cloud-gateway.jar。脚本结束时把基线规则（dev/config/sentinel/）写回命名空间。
+# 已 mvn package 出 target/mars-cloud-gateway.jar。
+# 脚本会改写 .env 所指命名空间里的两个规则配置，结束时把基线规则（dev/config/sentinel/）写回；写回失败时退出码非零。
 set -euo pipefail
 
 module_dir=$(cd "$(dirname "$0")" && pwd)
@@ -29,7 +30,6 @@ for port in "$GATEWAY_PORT" "$MANAGEMENT_PORT"; do
 done
 
 FLOW_ID=mars-cloud-gateway-sentinel-gw-flow-rules.json
-GROUP_ID=mars-cloud-gateway-sentinel-gw-api-group-rules.json
 rules=(python3 "$module_dir/sentinel-rules.py" --env-file "$ENV_FILE")
 work=$(mktemp -d -t gateway-sentinel-e2e)
 # 两个目录预先建好：Sentinel 如果写文件就会写在这里，结束时核对它们仍是空的
@@ -45,8 +45,13 @@ stop_gateway() {
     GATEWAY_PID=''
 }
 cleanup() {
+    local status=$?
     stop_gateway
-    "${rules[@]}" publish >/dev/null || printf 'WARNING: could not restore the baseline rules\n' >&2
+    if ! "${rules[@]}" publish >/dev/null; then
+        printf 'FAIL could not write the baseline rules back to the namespace\n' >&2
+        status=1
+    fi
+    exit "$status"
 }
 trap cleanup EXIT
 
@@ -90,17 +95,17 @@ burst() { # 方法 路径 客户端地址 次数
     for ((i = 0; i < $4; i++)); do out+="$(request "$1" "$2" "$3") "; done
     printf '%s' "${out% }"
 }
+# 放行的请求打到没有实例的 order 服务，网关以 503（63002）结束；只有它算放行，连接失败的 000 与 500 都不算
+let_through() { [ "$1" = 503 ]; }
 expect_blocked_third() { # 标签 客户端地址
     local statuses
     statuses=$(burst GET /order/v1/orders "$2" 3)
     case "$statuses" in
+        "503 503 429") ok "$1: $statuses" ;;
         *429-wrong-body*) fail "$1: 429 without the 63006 envelope ($statuses)" ;;
-        "429 "*|*" 429 "*) fail "$1: blocked before the limit ($statuses)" ;;
-        *" 429") ok "$1: $statuses" ;;
-        *) fail "$1: third request was not blocked ($statuses)" ;;
+        *) fail "$1: expected 503 503 429, got $statuses" ;;
     esac
 }
-not_blocked() { [ "$1" != 429 ] && [ "$1" != 429-wrong-body ]; }
 
 loose_rules='[{"resource":"order","count":1000,"intervalSec":60,"paramItem":{"parseStrategy":0}},
  {"resource":"order-callbacks","resourceMode":1,"count":1000,"intervalSec":60}]'
@@ -115,7 +120,7 @@ for ((i = 0; i < 90 && ${#GATEWAY_PID} > 0; i++)); do kill -0 "$GATEWAY_PID" 2>/
 if kill -0 "$GATEWAY_PID" 2>/dev/null; then fail "gateway kept running without $FLOW_ID"; fi
 wait "$GATEWAY_PID" 2>/dev/null && fail "gateway exited with status 0 without $FLOW_ID" || true
 GATEWAY_PID=''
-grep -q "dataId=$FLOW_ID" "$work/missing-rules.log" && grep -q '配置不存在' "$work/missing-rules.log" \
+{ grep -q "dataId=$FLOW_ID" "$work/missing-rules.log" && grep -q '配置不存在' "$work/missing-rules.log"; } \
     || fail "startup failure does not name the missing data ID"
 ok "startup fails without $FLOW_ID"
 
@@ -123,10 +128,9 @@ echo "== 宽松规则下启动"
 printf '%s' "$loose_rules" | "${rules[@]}" put "$FLOW_ID" - >/dev/null
 start_gateway run-1
 wait_healthy run-1
-pid_before=$GATEWAY_PID
 request GET /order/v1/orders 10.9.9.9 >/dev/null   # 预热：冷启动的第一次请求可能很慢
 statuses=$(burst GET /order/v1/orders 10.1.0.1 3)
-case "$statuses" in *429*) fail "loose rules blocked a request ($statuses)" ;; esac
+[ "$statuses" = "503 503 503" ] || fail "loose rules did not let three requests through to the route ($statuses)"
 ok "loose rules let three requests through: $statuses"
 
 echo "== 收紧规则，不重启生效"
@@ -140,24 +144,24 @@ for ((attempt = 1; attempt <= 10; attempt++)); do
 done
 [ -n "$effective" ] || fail "tightened rules did not take effect within 10 seconds"
 [ "$effective" -le 5 ] || fail "tightened rules took ${effective}s"
-[ "$GATEWAY_PID" = "$pid_before" ] && kill -0 "$GATEWAY_PID" || fail "gateway process changed"
+kill -0 "$GATEWAY_PID" 2>/dev/null || fail "gateway process exited"
 ok "tightened rules took effect in ${effective}s without a restart"
 
 echo "== 按客户端地址分别计数"
 expect_blocked_third "client 10.3.0.1" 10.3.0.1
 status=$(request GET /order/v1/orders 10.3.0.2)
-not_blocked "$status" || fail "another client address was blocked ($status)"
+let_through "$status" || fail "another client address was not let through to the route ($status)"
 ok "another client address still passes: $status"
 
 echo "== 回调路径按 API 分组计总数"
 first=$(request POST /order/v1/callbacks/pay 10.4.0.1)
 second=$(request POST /order/v1/callbacks/pay 10.4.0.2)
 third=$(request POST /order/v1/callbacks/pay 10.4.0.3)
-not_blocked "$first" && not_blocked "$second" || fail "callbacks blocked before the group limit ($first $second)"
+{ let_through "$first" && let_through "$second"; } || fail "callbacks were not let through before the group limit ($first $second)"
 [ "$third" = 429 ] || fail "third callback from a new address was not blocked ($third)"
 ok "callback group limit applies across addresses: $first $second $third"
 status=$(request GET /order/v1/other 10.4.0.4)
-not_blocked "$status" || fail "a non-callback path was blocked by the callback group ($status)"
+let_through "$status" || fail "a non-callback path was not let through ($status)"
 ok "other order paths are outside the callback group: $status"
 
 echo "== 坏规则与删除配置都保留上一批"
@@ -169,12 +173,16 @@ expect_blocked_third "previous rules after an invalid update" 10.5.0.1
 for ((i = 0; i < 10; i++)); do grep -q '配置已被删除或内容为空白' "$work/run-1.log" && break; sleep 1; done
 grep -q '配置已被删除或内容为空白' "$work/run-1.log" || fail "deleting the data ID was not rejected loudly"
 expect_blocked_third "previous rules after the data ID was deleted" 10.6.0.1
+# 写回收紧规则，供重启用例读取；内容与仍在生效的一批相同，不产生「规则已更新」日志
 printf '%s' "$tight_rules" | "${rules[@]}" put "$FLOW_ID" - >/dev/null
-for ((i = 0; i < 10; i++)); do [ "$(grep -c 'Sentinel 规则已更新：dataId=mars-cloud-gateway-sentinel-gw-flow-rules.json' "$work/run-1.log")" -ge 2 ] && break; sleep 1; done
 ok "invalid and deleted configurations kept the previous rules"
 
 echo "== 只监听业务端口与管理端口"
-listening=$(lsof -nP -a -p "$GATEWAY_PID" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR > 1 {sub(/.*:/, "", $9); print $9}' | sort -un | tr '\n' ' ')
+# lsof 没有找到监听端口时返回非零；在 set -e 下显式处理，不让脚本静默退出
+if ! lsof_out=$(lsof -nP -a -p "$GATEWAY_PID" -iTCP -sTCP:LISTEN 2>/dev/null); then
+    fail "lsof found no listening TCP ports for the gateway process $GATEWAY_PID"
+fi
+listening=$(printf '%s\n' "$lsof_out" | awk 'NR > 1 {sub(/.*:/, "", $9); print $9}' | sort -un | tr '\n' ' ')
 expected_ports=$(printf '%s\n%s\n' "$GATEWAY_PORT" "$MANAGEMENT_PORT" | sort -n | tr '\n' ' ')
 [ "$listening" = "$expected_ports" ] || fail "unexpected listening ports: $listening (expected $expected_ports)"
 ok "listening ports: $listening"

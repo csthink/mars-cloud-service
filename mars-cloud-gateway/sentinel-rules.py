@@ -6,7 +6,8 @@ put DATA_ID FILE   writes one data ID from a file (use - for standard input)
 delete DATA_ID     deletes one data ID
 
 The Nacos address, namespace and account come from the env file (NACOS_SERVER_ADDR, NACOS_NAMESPACE_ID,
-NACOS_USERNAME, NACOS_PASSWORD). Credentials are never printed.
+NACOS_USERNAME, NACOS_PASSWORD). NACOS_SERVER_ADDR is one host:port without a scheme. Credentials are never printed.
+Every failure ends with one line on standard error and a non-zero exit status.
 """
 import argparse
 import json
@@ -17,7 +18,8 @@ import urllib.parse
 import urllib.request
 
 GROUP = "SENTINEL_GROUP"
-# The same files seed the base namespace when the local middleware is initialized (dev/middleware_init.py).
+# The same files seed the base namespace and fill in the missing rule configurations of the numbered
+# environments when the local middleware is initialized (dev/middleware_init.py).
 RULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "dev" / "config" / "sentinel"
 
 
@@ -37,7 +39,10 @@ def read_env(path):
 
 class Nacos:
     def __init__(self, env):
-        self.base = "http://" + (env.get("NACOS_SERVER_ADDR") or "127.0.0.1:8848")
+        address = env.get("NACOS_SERVER_ADDR") or "127.0.0.1:8848"
+        if "://" in address or "," in address or "/" in address:
+            sys.exit(f"NACOS_SERVER_ADDR must be one host:port without a scheme or path, got {address!r}")
+        self.base = "http://" + address
         self.namespace = env["NACOS_NAMESPACE_ID"]
         self.token = self.call("POST", "/nacos/v3/auth/user/login",
                                {"username": env["NACOS_USERNAME"], "password": env["NACOS_PASSWORD"]})["accessToken"]
@@ -57,12 +62,21 @@ class Nacos:
                 body = json.loads(response.read().decode())
         except urllib.error.HTTPError as error:
             sys.exit(f"Nacos {method} {path} returned HTTP {error.code}")
+        except urllib.error.URLError as error:
+            sys.exit(f"Nacos {method} {path} failed: {error.reason}")
+        except OSError as error:
+            sys.exit(f"Nacos {method} {path} failed: {error}")
+        except json.JSONDecodeError:
+            sys.exit(f"Nacos {method} {path} returned a body that is not JSON")
         if isinstance(body, dict) and body.get("code", 0) != 0:
             sys.exit(f"Nacos {method} {path} failed with code {body.get('code')}")
         return body.get("data", body) if isinstance(body, dict) else body
 
-    def put(self, data_id, content):
-        json.loads(content)  # a malformed file is a local mistake, not something to publish
+    def put(self, data_id, content, source):
+        try:
+            json.loads(content)  # a malformed file is a local mistake, not something to publish
+        except json.JSONDecodeError as error:
+            sys.exit(f"{source} is not valid JSON: {error}")
         self.call("POST", "/nacos/v3/admin/cs/config",
                   {"namespaceId": self.namespace, "groupName": GROUP, "dataId": data_id,
                    "content": content, "type": "json"})
@@ -92,13 +106,16 @@ def main():
         if not files:
             sys.exit(f"no rule files in {RULES_DIR}")
         for file in files:
-            nacos.put(file.name, file.read_text(encoding="utf-8"))
+            nacos.put(file.name, file.read_text(encoding="utf-8"), file)
     elif args.command == "put":
         content = sys.stdin.read() if args.file == "-" else pathlib.Path(args.file).read_text(encoding="utf-8")
-        nacos.put(args.data_id, content)
+        nacos.put(args.data_id, content, "standard input" if args.file == "-" else args.file)
     else:
         nacos.delete(args.data_id)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FileNotFoundError as error:
+        sys.exit(f"cannot read {error.filename}: {error.strerror}")
