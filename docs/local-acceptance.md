@@ -25,7 +25,8 @@
 | `OTLP_TRACING_ENDPOINT` | 四份都写，取值相同 | 默认编排为 `http://127.0.0.1:24318/v1/traces` |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | `mars-cloud-monitor/.env` 与 `mars-cloud-sample-service/.env`，取值相同 | 面板的登录账号。面板读自己那一份，任一为空时拒绝启动，见 [面板说明](../mars-cloud-monitor/README.md)；可观测性验收读 sample 那一份 |
 | `JAEGER_QUERY`、`LOKI` | `mars-cloud-sample-service/.env`，模板里是注释，去掉注释 | 默认编排为 `http://127.0.0.1:36686` 与 `http://127.0.0.1:23100`，只有可观测性验收读取 |
-| `MARS_SECURITY_ISSUER_URI` / `MARS_SECURITY_JWK_SET_URI` | `mars-cloud-sample-service/.env` 与 `mars-cloud-upms-service/.env` | 测试签发器的地址，取自 IDEA 指南第 5 节的输出。`MARS_SECURITY_ISSUER_URI` 必填，须是 HTTPS 地址，`local` profile 下也可以是回环 HTTP 地址，为空或不符合时这两个服务启动失败；`MARS_SECURITY_JWK_SET_URI` 可选，本地按签发器输出一并填写 |
+| `MARS_SECURITY_ISSUER_URI` / `MARS_SECURITY_JWK_SET_URI` | `mars-cloud-gateway/.env`、`mars-cloud-sample-service/.env` 与 `mars-cloud-upms-service/.env` | 测试签发器的地址，取自 IDEA 指南第 5 节的输出。`MARS_SECURITY_ISSUER_URI` 必填，须是 HTTPS 地址，`local` profile 下也可以是回环 HTTP 地址，为空或不符合时这三个服务启动失败；`MARS_SECURITY_JWK_SET_URI` 可选，本地按签发器输出一并填写 |
+| `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` / `_DATABASE` | `mars-cloud-gateway/.env`；可观测性验收从 `mars-cloud-sample-service/.env` 读取并传给它启动的网关 | 网关查询会话撤销状态与健康检查用的 Redis，取本机中间件编排发布的地址与口令，见 [本地中间件说明](../dev/README.md) |
 
 ## 2. 自动验收
 
@@ -71,7 +72,7 @@ done
 
 四个管理端口 9102、9103、9100、9190 的 `/actuator/health` 都返回 200 即启动完成。在 IntelliJ IDEA 里启动时按 IDEA 指南第 6 节配置启动项，面板是其中可选的一项。
 
-sample 与 UPMS 启动时只校验签发器地址，要求见第 1 节。两项都按签发器输出填写时，启动不连接签发器，公钥在第一次校验令牌时才获取；所以签发器没有运行时服务照常启动，业务请求一律得到 `401`；健康检查与第 4 节的检查不受影响。需要带令牌的业务请求时，按 IDEA 指南第 5 节启动测试签发器，并把输出的地址写进这两份 `.env` 后重启这两个服务。
+网关、sample 与 UPMS 启动时只校验签发器地址，要求见第 1 节。两项都按签发器输出填写时，启动不连接签发器，公钥在第一次校验令牌时才获取；所以签发器没有运行时三个服务照常启动，带令牌的业务请求一律得到 `401`；健康检查与第 4 节的检查不受影响。需要带令牌的业务请求时，按 IDEA 指南第 5 节启动测试签发器，并把输出的地址写进这三份 `.env` 后重启这三个服务。网关还要能连上第 1 节的 Redis：它的健康检查含 Redis 状态，带令牌的请求要查询会话撤销状态。
 
 ## 4. 命令行检查
 
@@ -82,11 +83,11 @@ sample 与 UPMS 启动时只校验签发器地址，要求见第 1 节。两项�
 | 管理端点匿名健康检查 | `curl -s http://127.0.0.1:9103/actuator/health`（9100、9102、9190 同理） | `{"groups":["liveness","readiness"],"status":"UP"}`：只有聚合状态与探针分组名，没有组件明细 |
 | 指标端点要认证 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9103/actuator/prometheus` | `401`；9102、9190 相同 |
 | 带凭据读指标 | `curl -s -u mars-management http://127.0.0.1:9103/actuator/prometheus \| head` | 输入 `MARS_MANAGEMENT_PASSWORD` 后得到 Prometheus 文本；把账号换成 `.env` 里实际填写的值 |
-| 网关只暴露 health 与 info | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9100/actuator/prometheus` | `404`，带凭据也是 `404`；`/actuator/info` 匿名返回 `200`。网关没有接入 Spring Security，见 [网关说明](../mars-cloud-gateway/README.md) |
+| 网关的管理端点同样要认证 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9100/actuator/prometheus` | `401`；带凭据 `200`；`/actuator/info` 也要凭据。网关已接入 Spring Security，见 [网关说明](../mars-cloud-gateway/README.md) |
 | 业务端口上没有管理端点 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8100/actuator/health` | `404` |
 | 只监听回环地址 | `lsof -nP -iTCP -sTCP:LISTEN \| grep -E ':(8100\|8102\|8103\|8190\|9100\|9102\|9103\|9190) '` | 八个端口都显示为 `127.0.0.1:<端口>`，没有 `*:<端口>` |
 | 面板读到全部实例 | `curl -s -u monitor-admin -H 'Accept: application/json' http://127.0.0.1:8190/applications` | 四个应用 `mars-cloud-gateway`、`mars-cloud-upms-service`、`mars-cloud-sample-service`、`mars-cloud-monitor`，状态都是 `UP`；各实例的 `managementUrl` 主机都是 `127.0.0.1`，端口依次是 9100、9102、9103、9190。面板刚启动时可能还没列出它自己，稍等再查 |
-| 请求留下调用链 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8100/sample/v1/orders/1`，再执行 `curl -s 'http://127.0.0.1:36686/api/traces?service=mars-cloud-gateway&lookback=5m&limit=5'` | 没有令牌时请求得到 `401`；追踪后端最近的一条链同时含 `mars-cloud-gateway` 与 `mars-cloud-sample-service` 的 span |
+| 请求留下调用链 | 带测试签发器的令牌（IDEA 指南第 5 节）执行 `curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer <令牌>' http://127.0.0.1:8100/sample/v1/orders/1`，再执行 `curl -s 'http://127.0.0.1:36686/api/traces?service=mars-cloud-gateway&lookback=5m&limit=5'` | 带令牌时请求转发到 sample，追踪后端最近的一条链同时含 `mars-cloud-gateway` 与 `mars-cloud-sample-service` 的 span。没有令牌时网关直接返回 `401`、不转发，那条链只有网关的 span |
 
 ## 5. 浏览器检查
 

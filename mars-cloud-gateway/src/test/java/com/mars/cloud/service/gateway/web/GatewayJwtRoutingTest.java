@@ -276,4 +276,25 @@ class GatewayJwtRoutingTest {
                 .exchange().expectStatus().isUnauthorized();
         assertThat(UPSTREAM_CALLS).hasValue(1);
     }
+
+    /**
+     * 跨域预检由 CorsWebFilter 在安全链之前应答；没有 Origin 的 OPTIONS 请求与别的方法一样要求令牌，
+     * 管理路径的规则同样适用。
+     */
+    @Test
+    void optionsRequestsOutsidePreflightAreNotExemptFromTheSecurityChain() {
+        web.options().uri("/order/v1/orders").header("Host", "api.flippoabc.com")
+                .exchange().expectStatus().isUnauthorized().expectBody().jsonPath("$.code").isEqualTo("62001");
+        web.options().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .headers(headers -> headers.setBearerAuth(adminToken("portal")))
+                .exchange().expectStatus().isForbidden().expectBody().jsonPath("$.code").isEqualTo("62003");
+        assertThat(UPSTREAM_CALLS).hasValue(0);
+
+        web.options().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
+                .header("Origin", "https://console.flippoabc.com")
+                .header("Access-Control-Request-Method", "GET")
+                .exchange().expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://console.flippoabc.com");
+        assertThat(UPSTREAM_CALLS).hasValue(0);
+    }
 }

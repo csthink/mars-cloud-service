@@ -7,7 +7,8 @@
 # 四个部署物只监听回环地址并注册回环地址，给出私网地址时按它绑定与注册。
 #
 # 前置：本机中间件已启动（追踪后端、日志后端、注册中心）；四个模块已 clean package；
-# 环境文件给出注册中心连接、端口与管理端点凭据；本机有 docker（临时 Grafana 用）。
+# 环境文件给出注册中心连接、端口、管理端点凭据，以及网关使用的 Redis 连接（SPRING_DATA_REDIS_HOST、SPRING_DATA_REDIS_PORT、
+# SPRING_DATA_REDIS_PASSWORD：网关的健康检查含 Redis 状态，带令牌的请求要查询会话撤销状态）；本机有 docker（临时 Grafana 用）。
 #
 set -uo pipefail
 
@@ -51,6 +52,7 @@ LOKI="${LOKI:?日志后端地址必须给出，例如 http://127.0.0.1:23100}"
 : "${MONITOR_USERNAME:?监控面板账号必须给出}"
 : "${MONITOR_PASSWORD:?监控面板口令必须给出}"
 : "${NACOS_NAMESPACE_ID:?注册中心命名空间必须给出}"
+: "${SPRING_DATA_REDIS_HOST:?网关使用的 Redis 地址必须给出}"
 
 LOG_DIR="${OBSERVABILITY_E2E_LOG_DIR:-$(mktemp -d)}"
 mkdir -p "$LOG_DIR"
@@ -123,7 +125,7 @@ SERVER_PORT="$UPMS_PORT" java "${JVM_FLAGS[@]}" -jar "$UPMS_JAR" > "$LOG_DIR/upm
 UPMS_PID=$!
 SERVER_PORT="$SAMPLE_PORT" java "${JVM_FLAGS[@]}" -jar "$SAMPLE_JAR" > "$LOG_DIR/sample.log" 2>&1 &
 SAMPLE_PID=$!
-# 网关的日志级别只能在启动时给：它没有可写的日志级别端点（见下一节）。
+# 网关的请求日志级别在启动时给出；网关的管理端口同样受 Basic 认证保护，日志级别端点也可写（见下一节）。
 SERVER_PORT="$GATEWAY_PORT" LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CLOUD_GATEWAY=DEBUG \
   java "${JVM_FLAGS[@]}" -jar "$GATEWAY_JAR" > "$LOG_DIR/gateway.log" 2>&1 &
 GATEWAY_PID=$!
@@ -154,11 +156,12 @@ raise_level() { # 管理端口 logger
     -X POST -H 'Content-Type: application/json' -d '{"configuredLevel":"DEBUG"}' \
     "http://127.0.0.1:$1/actuator/loggers/$2"
 }
-# 网关的 classpath 上没有安全组件，管理端点按约定收窄为 health 与 info，
-# 日志级别端点因此不可达。这既是预期行为，也是收窄确实生效的证据。
-check "网关的日志级别端点按收窄不可达" "404" "$(raise_level "$GATEWAY_MANAGEMENT_PORT" org.springframework.cloud.gateway)"
+# 网关已接入 Spring Security，管理端点与其他部署物一样：health 匿名可读，其余端点要求 Basic 凭据。
+check "网关的日志级别端点可写（带凭据）" "204" "$(raise_level "$GATEWAY_MANAGEMENT_PORT" org.springframework.cloud.gateway)"
 check "网关的健康端点仍匿名可读" "200" "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/health")"
-check "网关的指标端点按收窄不可达" "404" \
+check "网关的指标端点匿名被拒" "401" \
+  "$(command curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/prometheus")"
+check "网关的指标端点带凭据可读" "200" \
   "$(management_curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GATEWAY_MANAGEMENT_PORT/actuator/prometheus")"
 check "示例服务的日志级别端点可写（带凭据）" "204" "$(raise_level "$SAMPLE_MANAGEMENT_PORT" org.springframework.web)"
 check "授权决策服务的日志级别端点可写（带凭据）" "204" "$(raise_level "$UPMS_MANAGEMENT_PORT" org.springframework.web)"

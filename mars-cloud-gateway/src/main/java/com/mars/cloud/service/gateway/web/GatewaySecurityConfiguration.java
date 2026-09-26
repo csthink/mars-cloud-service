@@ -62,8 +62,8 @@ public class GatewaySecurityConfiguration {
                 .formLogin(form -> form.disable())
                 .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
                 .requestCache(cache -> cache.disable())
+                // 跨域预检由 CorsWebFilter 在安全链之前应答；其他 OPTIONS 请求与别的方法一样要求令牌
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(ISSUER_PATTERNS).permitAll()
                         .pathMatchers("/order/v1/callbacks/**").permitAll()
                         .pathMatchers("/product/v1/me", "/product/v1/me/**", "/product/v1/admin", "/product/v1/admin/**",

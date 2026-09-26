@@ -129,10 +129,10 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `SERVER_ADDRESS` | 业务端口、管理端口与注册到 Nacos 的地址，缺省 `127.0.0.1`；部署时必填实例的私网 IPv4 地址，见「端口与 context path」 |
 | `NACOS_SERVER_ADDR` / `NACOS_NAMESPACE_ID` | Nacos 地址与环境 Namespace ID |
 | `NACOS_USERNAME` / `NACOS_PASSWORD` | Nacos 账号与密码 |
-| `MARS_SECURITY_ISSUER_URI` | sample / UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
+| `MARS_SECURITY_ISSUER_URI` | 网关、sample、UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
 | `MARS_SECURITY_JWK_SET_URI` | 可选的 JWKS 地址，仍校验 issuer；部署环境使用 HTTPS |
 | `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_PASSWORD` | 数据源 |
-| `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
+| `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis；auth-service 与网关使用，网关用它查询会话撤销状态 |
 | `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 管理端点 Basic 认证的账号；同一环境内各服务相同，监控面板用它读取各实例 |
 | `OTLP_TRACING_ENDPOINT` | 调用链导出端点（OTLP over HTTP 的完整地址）；留空则不导出 |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | 监控面板的管理员账号，只有 `mars-cloud-monitor` 读取；任一为空即启动失败 |
@@ -164,9 +164,9 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `/actuator/loggers`、`/actuator/threaddump`、`/actuator/heapdump` | Basic 认证 | 运行期排查 |
 
 认证账号来自 `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD`。缺凭据时，开发 profile 只暴露
-`health` 与 `info` 并告警，其他 profile 启动失败；服务没有接入 Spring Security 时（例如网关）只暴露 `health` 与 `info`。
-这时管理端点没有 Basic 认证链，`info` 由服务自己的安全链处理：网关没有安全链，匿名可读；sample 与 UPMS 要求 Bearer
-令牌；监控面板要求登录。没有认证链时显式配置的暴露清单也不能超出 `health` 与 `info`，否则非开发 profile 启动失败。
+`health` 与 `info` 并告警，其他 profile 启动失败；没有接入 Spring Security 的服务同样只暴露 `health` 与 `info`，
+这时管理端点没有 Basic 认证链，`info` 由服务自己的安全链处理。当前网关、sample 与 UPMS 都已接入 Spring Security，
+管理端点都走 Basic 认证链；监控面板要求登录。没有认证链时显式配置的暴露清单也不能超出 `health` 与 `info`，否则非开发 profile 启动失败。
 暴露清单与这些规则见框架仓 observability starter 的说明，需要进一步收窄时设 `mars.observability.management.exposure`。
 业务端口上没有 `/actuator/*`。
 

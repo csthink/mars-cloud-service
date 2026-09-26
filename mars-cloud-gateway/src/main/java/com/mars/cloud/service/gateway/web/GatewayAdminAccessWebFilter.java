@@ -3,7 +3,6 @@ package com.mars.cloud.service.gateway.web;
 import com.mars.cloud.security.SecurityErrorCode;
 import com.mars.cloud.security.reactive.ReactiveSecurityErrors;
 import java.util.Optional;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.server.PathContainer;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -27,7 +26,7 @@ final class GatewayAdminAccessWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        if (exchange.getRequest().getMethod() == HttpMethod.OPTIONS) return chain.filter(exchange);
+        // 跨域预检由 CorsWebFilter 在安全链之前应答，到达这里的 OPTIONS 请求与别的方法一样按管理路径规则判定
         PathContainer path = exchange.getRequest().getPath().pathWithinApplication();
         if (!ADMIN_PATH.matches(path)) return chain.filter(exchange);
         return ReactiveSecurityContextHolder.getContext()

@@ -94,7 +94,7 @@ public class EnvelopeErrorWebExceptionHandler implements ErrorWebExceptionHandle
         String where = request.getMethod() + " " + request.getURI().getPath();
         if (resolved.code() == GatewayErrorCode.RATE_LIMITED.getCode()) {
             // 限流在受攻击时成批出现，逐条 WARN 会淹没日志；次数由指标 mars.sentinel.requests.blocked 记录。
-            // 网关接入 Spring Security 之前管理端点只暴露 health 与 info，这个指标在那之前读不到（README「限流」）
+            // 次数经管理端口的 prometheus 端点带凭据读取（README「限流」）
             log.debug("网关限流 {} code={} {}: {}", resolved.status().value(), resolved.code(), where, resolved.detail());
             return;
         }

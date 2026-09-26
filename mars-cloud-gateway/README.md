@@ -27,7 +27,7 @@
 
 网关从 `MARS_SECURITY_ISSUER_URI` 读取签发方地址，可选从 `MARS_SECURITY_JWK_SET_URI` 读取公钥集合地址；启动前必须配置签发方。受保护请求的 Bearer 令牌须通过签名、签发方、时效与 `mars-cloud-gateway` audience 校验。网关使用响应式安全链，验证失败时返回 security starter 的统一错误信封；业务服务仍验证自己的 audience 并执行权限判断。
 
-认证 Host 的签发方端点清单允许不带访问令牌；其中发码、验证码校验、令牌与授权端点按来源地址限流，见「限流」。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。
+认证 Host 的签发方端点清单允许不带访问令牌；其中发码、验证码校验、令牌与授权端点按来源地址限流，见「限流」。API Host 的 `/auth/**`、`/order/**`、`/upms/**`、`/sample/**` 需要令牌；`/product/**` 与 `/notice/**` 的 GET 允许匿名，但其 `v1/me` 和 `v1/admin` 路径需要令牌，其他请求方法也需要令牌。未知 Host 和未匹配路径仍返回 404。跨域预检由跨域过滤器在安全链之前应答，其他 OPTIONS 请求与别的方法一样要求令牌。认证 Host 的 `/userinfo` 允许匿名，但请求带 Bearer 令牌时网关仍先验证它：无效或过期的令牌得到网关的 `62002/401`，不转发给签发方。
 
 对 API 请求中已验证的 Bearer 令牌，网关要求合法的 `sid` 声明，并通过响应式 Redis 读取会话撤销状态。已撤销或 `sid` 无效时返回 `62002/401`；撤销状态最多缓存 5 秒。Redis 不可用且没有未过期缓存时返回 `63005/503`，请求不会转发给业务服务。匿名公开读取和认证 Host 的签发方端点无需查询 Redis。Redis 地址与库号由标准 `SPRING_DATA_REDIS_*` 环境变量提供；管理端口的健康检查包含 Redis 状态。
 
@@ -152,7 +152,7 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
 ## 端到端验收
 
 `verify-e2e.sh` 用**真进程**验证打包出来的 jar：先起网关、后起 UPMS，逐条核对上表承诺的行为，
-包括「网关先于业务服务启动，业务服务上线后网关自动发现」这条启动顺序约定。
+包括「网关先于业务服务启动，业务服务上线后网关自动发现」这条启动顺序约定。脚本自己启动测试签发器；网关的 `.env` 要给出可达的 Redis（`SPRING_DATA_REDIS_HOST`、`_PORT`、`_PASSWORD`），网关的健康检查含 Redis 状态，带令牌的请求要查询撤销状态。
 
 `verify-revocation-e2e.sh` 使用打包后的网关、`dev/images.lock.json` 指定的独立 Redis 容器与本地 HTTP 上游，核对会话撤销、无效 `sid`、Redis 停止后的 `63005/503` 和恢复。运行前需打包 gateway 与 sample 模块，并在本机准备已锁定的 Redis 镜像；脚本使用 `local,test` profile，不连接 Nacos，也不停止共用中间件；限流规则只从 Nacos 读取，所以这个进程关闭限流组件，限流由 `verify-sentinel-e2e.sh` 单独验收。
 
@@ -175,7 +175,7 @@ mvn -f .. package -pl mars-cloud-gateway -am
 ./verify-sentinel-e2e.sh          # 需要本机 Nacos 与本目录的 .env（含管理端点凭据）；SENTINEL_E2E_ENV_FILE 可另指环境文件
 ```
 
-`verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、无令牌的 sample 请求及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。
+`verify-ingress-e2e.sh` 另外启动网关、auth-service 和 sample 的真实进程，验证可信代理数量为 1 时的登录路由、缺失或非法转发头、非可信对端、无令牌的 sample 请求及独立管理端口。运行前准备三个模块的受保护 `.env`、auth-service 的专用空数据库和本地 HTTPS CA，并把网关实例的回环地址加入本地 auth-service 的 `MARS_AUTH_TRUSTED_GATEWAY_CIDRS`。用 `keytool` 将该 CA 导入独立的 PKCS12 信任库，再提供 `INGRESS_E2E_CA_FILE`、`INGRESS_E2E_TRUST_STORE`、`INGRESS_E2E_TRUST_PASSWORD`。默认业务端口为 8301、8300、8303；可分别用 `INGRESS_E2E_AUTH_PORT`、`INGRESS_E2E_GATEWAY_PORT`、`INGRESS_E2E_SAMPLE_PORT` 调整。脚本只创建并停止本次进程，不清理数据库。网关的 `.env` 同样要给出可达的 Redis，原因同 `verify-e2e.sh`。
 
 ## 配置：分层与来源
 
