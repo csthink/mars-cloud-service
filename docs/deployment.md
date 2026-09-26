@@ -104,6 +104,7 @@ DNS 解析器与 Linux 的 epoll）还必须带：
 | 默认配置 | `src/main/resources/config/application.yml` | ✅ | 应用名、**默认端口**、**默认监听地址**（回环地址）、context path、i18n、错误码区间声明 |
 | profile 覆盖 | `src/main/resources/config/application-<profile>.yml` | ✅ | **仅**行为开关（自动装配排除项、时区、功能开关）。**不含任何 host / 端口 / 库名 / 口令** |
 | Nacos 动态配置 | 环境 Namespace 下的共享与应用 Data ID | ❌ | 非敏感、需要动态刷新的默认值与应用覆盖值 |
+| Nacos 限流规则 | 环境 Namespace 下 `SENTINEL_GROUP` 的 `mars-cloud-gateway-sentinel-gw-api-group-rules.json` 与 `mars-cloud-gateway-sentinel-gw-flow-rules.json` | ❌ | 网关的 API 分组与限流规则，阈值随部署给出；缺少时网关不启动，见网关 README「限流」 |
 | 环境取值 | 环境变量 | ❌ | 地址、端口、库名、口令 |
 
 「端口」与「监听地址」在两处出现，口径是：**默认值进版本库**（让新克隆能直接跑起来），
@@ -246,7 +247,8 @@ spring:
 ## 启动顺序
 
 网关、UPMS 与 sample 都接入 Nacos，启动前必须先启动注册中心（三者对 Nacos 的导入都不是 `optional:`，
-注册中心不可用时启动失败）。
+注册中心不可用时启动失败）。网关另外要求 Namespace 里已有它的两个限流规则配置（`SENTINEL_GROUP`，Data ID 见上表），
+缺少、为空白或写错时启动失败。
 
 **网关与业务服务之间没有顺序要求**：网关先起时，目标服务没有实例的请求返回信封式 503
 （`63002`），业务服务上线后网关自动发现，不需要重启。这条由网关的 `verify-e2e.sh`
@@ -260,6 +262,7 @@ sample 到 UPMS 同样只经服务名调用。`mars-cloud-sample-service/verify-
 - [ ] 生产 profile **不在** `mars.env.dev-profiles` 里（否则失败响应会回带调试详情）
 - [ ] 数据库、Redis 等连接参数全部来自环境变量，配置文件里没有硬编码
 - [ ] Nacos 地址、Namespace 与凭据来自环境变量，配置正文没有明文凭据
+- [ ] 网关的两个限流规则配置已按生产阈值写入 Namespace 的 `SENTINEL_GROUP`，网关启动日志里有「Sentinel 规则已从 Nacos 装入」
 - [ ] `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` 已配置，管理端口只在内网可达；Swagger 已按需关闭
 - [ ] `SERVER_PORT` 与编排/网关配置一致
 - [ ] 每个实例都设置了 `SERVER_ADDRESS`，取值是实例的私网 IPv4 地址；从另一个实例能按这个地址连到它的业务端口与管理端口

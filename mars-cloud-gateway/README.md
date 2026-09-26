@@ -44,14 +44,16 @@ API 跨域只对 API Host 的表内路径生效。允许的正式页面来源为
 | `mars-cloud-gateway-sentinel-gw-flow-rules.json` | 网关限流规则：按路由 ID 或分组名，可按客户端地址分别计数 |
 
 - 两个配置缺少、为空白或写错时，网关启动失败；某类规则不需要时写 `[]`。
-- 运行中修改后不重启即生效；写错、删除或清空时保留上一批规则，并写一行 ERROR。
+- 运行中修改后不重启即生效；写错、删除或内容改为空白时保留上一批规则，并写一行 ERROR。`[]` 是合法内容，会被接受并清空该类规则。
 - 按客户端地址计数用「来源地址与请求头」一节核对后的地址（`GatewayIngressFilter` 写入的交换属性），不用 TCP 对端地址。
-- 被拒绝的请求返回 429 与 `63006`，不逐条写 WARN；次数见指标 `mars.sentinel.requests.blocked`。
+  路由暴露检查先于限流执行：不该暴露的路由返回 404，不计入限流。
+- 被拒绝的请求返回 429 与 `63006`，只写 DEBUG 日志，不逐条写 WARN；次数计入指标 `mars.sentinel.requests.blocked`。
+  网关接入 Spring Security 之前管理端点只暴露 `health` 与 `info`（见「管理端点与可观测性」），这个指标在那之前读不到。
 
 本机基线在 service 仓的 `dev/config/sentinel/`：七条路由各一条按客户端地址的规则（每个地址每秒 50 次），
 `order-callbacks` 分组一条不区分地址的总量规则（每秒 100 次，支付渠道的回调来源地址不固定）。生产阈值随部署配置给出。
-本机中间件初始化会把它写进基准命名空间，隔离环境的命名空间从基准命名空间复制；已有环境用下面的命令把基线写进
-`.env` 指定的命名空间（同名覆盖）：
+本机中间件初始化把这两个文件写进基准 Namespace（类型 `json`），并在所选的每个编号环境的 Namespace 里补建缺失的规则配置，
+已有的不比较、不覆盖（见 `dev/README.md`）；已有环境用下面的命令把基线写进 `.env` 指定的 Namespace（同名覆盖）：
 
 ```bash
 python3 sentinel-rules.py --env-file .env publish
@@ -146,7 +148,7 @@ mvn -f .. package                 # 网关与 UPMS 都需要 package
 `verify-sentinel-e2e.sh` 启动网关的真实进程，经 Nacos 下发限流规则并核对：缺少规则配置时启动失败、修改后不重启生效、
 按客户端地址分别计数、回调分组计总数、写错与删除都保留上一批、重启后规则仍在、被拒绝的响应是 429 与 `63006`、
 只监听业务端口与管理端口、Sentinel 不写文件。它以可信代理数量 1 启动网关，放行的请求打到没有实例的 order 服务、以 503 结束，
-不需要其他服务；结束时把 `dev/config/sentinel/` 的基线写回命名空间。
+不需要其他服务。脚本会改写 `.env` 所指 Namespace 里的两个规则配置，结束时把 `dev/config/sentinel/` 的基线写回，写回失败时退出码非零。
 
 ```bash
 mvn -f .. package -pl mars-cloud-gateway -am

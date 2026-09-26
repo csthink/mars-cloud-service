@@ -7,7 +7,9 @@
 # **先起网关、后起 UPMS**，网关必须在不重启的情况下发现后起的实例。
 #
 # 前置：本机 Nacos 已启动，Namespace 下已有 COMMON/shared-common.yaml、
-# DEFAULT_GROUP/mars-cloud-gateway.yaml 与 DEFAULT_GROUP/mars-cloud-upms-service.yaml；
+# DEFAULT_GROUP/mars-cloud-gateway.yaml、DEFAULT_GROUP/mars-cloud-upms-service.yaml，
+# 以及网关的两个限流规则配置 SENTINEL_GROUP/mars-cloud-gateway-sentinel-gw-api-group-rules.json 与
+# SENTINEL_GROUP/mars-cloud-gateway-sentinel-gw-flow-rules.json（缺少时网关不启动，见 README「限流」）；
 # 本目录有 `.env`（或环境里已有 NACOS_* 变量）；两个模块都已 mvn package；
 # 机器上有 security_curl 与 python3（第 ⑦ 项用它比较 JSON 顶层键集合）。
 #
