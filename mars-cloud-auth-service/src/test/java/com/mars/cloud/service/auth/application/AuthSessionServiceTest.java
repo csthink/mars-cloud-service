@@ -80,7 +80,23 @@ class AuthSessionServiceTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sys_login_log WHERE event='SESSION_REVOKED'", Integer.class)).isEqualTo(1);
     }
 
-    @Test void nativeAuthorizationUsesTheAuthorizationIdAsItsDeviceSessionAndCountsAsADevice() {
+    @Test void nativeAuthorizationFromTheOldestBrowserEvictsAnotherDeviceInstead() {
+        var oldest = browserRequest();
+        service.login(Long.toString(USER), oldest);
+        clock.set(START.plus(Duration.ofMinutes(1)));
+        var second = browserRequest();
+        service.login(Long.toString(USER), second);
+        clock.set(START.plus(Duration.ofMinutes(2)));
+        service.login(Long.toString(USER), browserRequest());
+        clock.set(START.plus(Duration.ofMinutes(10)));
+        assertThat(service.authorizationSession(Long.toString(USER), "test-native", true, "authorization-9", oldest)).isEqualTo("authorization-9");
+        assertThat(rowOf(oldest.getSession(false).getId()).get("REVOKED_AT")).as("the browser granting the authorization stays").isNull();
+        assertThat(rowOf(oldest.getSession(false).getId())).containsEntry("LAST_SEEN_AT", Timestamp.from(START.plus(Duration.ofMinutes(10))));
+        assertThat(rowOf(second.getSession(false).getId())).containsEntry("REVOKE_REASON", "DEVICE_LIMIT");
+        assertThat(markers).containsExactly(second.getSession(false).getId());
+    }
+
+    @Test void nativeAuthorizationUsesTheAuthorizationIdAsItsDeviceSession() {
         var request = browserRequest();
         service.login(Long.toString(USER), request);
         clock.set(START.plus(Duration.ofMinutes(1)));

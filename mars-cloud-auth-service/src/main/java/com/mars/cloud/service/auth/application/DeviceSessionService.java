@@ -19,23 +19,31 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Device sessions of one account: the concurrent device limit, revocation with its side effects and retention.
- * Every write runs in the caller's database transaction when one exists, otherwise in its own.
+ * Every write runs in the caller's database transaction when one exists, otherwise in its own. Admissions of one
+ * account are serialized by a lock on its sys_user row; the transaction must take that lock before reading device rows,
+ * and it must read committed data (not a REPEATABLE READ snapshot taken before the lock), which is why the callers run
+ * at READ COMMITTED.
  */
 public class DeviceSessionService {
     public static final int MAX_DEVICES = 3;
     public static final Duration RETENTION = Duration.ofDays(30);
     public static final String AUDIT_EVENT = "SESSION_REVOKED";
+    /** A row registered this recently is alive even before its browser session or authorization record is stored. */
+    public static final Duration ADMISSION_GRACE = Duration.ofSeconds(60);
     static final String BROWSER = "BROWSER";
     static final String NATIVE = "NATIVE";
     private static final int PURGE_BATCH = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String ACTIVE_ROWS =
-            "SELECT session_id,user_id,kind,client_id,last_seen_at FROM sys_session WHERE user_id=? AND revoked_at IS NULL ORDER BY last_seen_at,created_at,session_id";
+            "SELECT session_id,user_id,kind,client_id,last_seen_at,created_at FROM sys_session WHERE user_id=? AND revoked_at IS NULL ORDER BY last_seen_at,created_at,session_id";
+    private static final String ROW_BY_ID =
+            "SELECT session_id,user_id,kind,client_id,last_seen_at,created_at FROM sys_session WHERE session_id=? AND revoked_at IS NULL";
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final Clock clock;
@@ -47,11 +55,12 @@ public class DeviceSessionService {
                                 SessionRepository<? extends Session> sessions, Supplier<OAuth2AuthorizationService> authorizations,
                                 RevocationStore revocations) {
         this.jdbc = jdbc; this.transactions = new TransactionTemplate(manager); this.clock = clock;
+        this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.sessions = sessions; this.authorizations = authorizations; this.revocations = revocations;
     }
 
     /** One active device row of an account. */
-    public record Device(String sessionId, long userId, String kind, String clientId, Instant lastSeenAt) { }
+    public record Device(String sessionId, long userId, String kind, String clientId, Instant lastSeenAt, Instant createdAt) { }
 
     /** The login or authorization that caused an eviction; written into the audit row. */
     public record Trigger(String kind, String clientId, String ip, String userAgent) {
@@ -62,7 +71,15 @@ public class DeviceSessionService {
 
     /** Active devices of an account, least recently seen first; stale rows are reported as they are stored. */
     public List<Device> activeDevices(long userId) {
-        return jdbc.query(ACTIVE_ROWS, (rs, i) -> new Device(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getTimestamp(5).toInstant()), userId);
+        return jdbc.query(ACTIVE_ROWS, DeviceSessionService::device, userId);
+    }
+
+    /**
+     * Serializes the admissions of one account for the rest of the current transaction. Callers that read device rows
+     * before admitting must take this lock first, otherwise a REPEATABLE READ snapshot could predate a concurrent admission.
+     */
+    public void lockAccount(long userId) {
+        jdbc.queryForList("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE", Long.class, userId);
     }
 
     /**
@@ -72,7 +89,7 @@ public class DeviceSessionService {
     public void admit(long userId, String kind, String clientId, HttpServletRequest request) {
         Trigger trigger = Trigger.of(kind, clientId, request);
         transactions.executeWithoutResult(status -> {
-            jdbc.queryForList("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE", Long.class, userId);
+            lockAccount(userId);
             var active = new ArrayList<Device>();
             for (Device device : activeDevices(userId)) {
                 if (alive(device)) active.add(device); else revoke(device, RevokeReason.EXPIRED, null);
@@ -84,8 +101,7 @@ public class DeviceSessionService {
     /** Revokes one device; returns false when it was already revoked or never existed. */
     public boolean revoke(String sessionId, RevokeReason reason) {
         return Boolean.TRUE.equals(transactions.execute(status -> {
-            var rows = jdbc.query("SELECT session_id,user_id,kind,client_id,last_seen_at FROM sys_session WHERE session_id=? AND revoked_at IS NULL",
-                    (rs, i) -> new Device(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getTimestamp(5).toInstant()), sessionId);
+            var rows = jdbc.query(ROW_BY_ID, DeviceSessionService::device, sessionId);
             if (rows.isEmpty()) return false;
             return revoke(rows.getFirst(), reason, null);
         }));
@@ -118,7 +134,17 @@ public class DeviceSessionService {
         }
     }
 
+    private static Device device(java.sql.ResultSet rs, int row) throws java.sql.SQLException {
+        return new Device(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getTimestamp(5).toInstant(), rs.getTimestamp(6).toInstant());
+    }
+
+    /**
+     * Whether the device can still be used. The browser session is stored by Spring Session when the login response
+     * commits and the authorization record is stored after its row, so rows inside {@link #ADMISSION_GRACE} are alive by
+     * construction; older rows are checked against their backing store.
+     */
     private boolean alive(Device device) {
+        if (device.createdAt().isAfter(clock.instant().minus(ADMISSION_GRACE))) return true;
         if (BROWSER.equals(device.kind())) return sessions.findById(device.sessionId()) != null;
         OAuth2Authorization authorization = authorizations.get().findById(device.sessionId());
         return authorization != null && (active(authorization.getRefreshToken()) || active(authorization.getAccessToken())

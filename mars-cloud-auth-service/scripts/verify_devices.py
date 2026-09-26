@@ -96,8 +96,8 @@ def main():
     second_token = token(second, 'test-browser', callback)
     third = login(args.base, args.ca, callback)
     third_token = token(third, 'test-browser', callback)
+    evicted_at = time.monotonic()  # the eviction happens inside the next call; measure from before it
     native_token = token(third, 'test-native', callback)
-    evicted_at = time.monotonic()
     require(claims(native_token)['sid'] != claims(third_token)['sid'], 'Native device must have its own session identifier')
     require(silent(first, callback) == 'evicted', 'The least recently seen browser must be evicted by the native device')
     require(silent(second, callback) == 'alive' and silent(third, callback) == 'alive', 'The other browsers must stay logged in')
@@ -108,9 +108,9 @@ def main():
     print('PASS: fourth device evicted the least recently seen browser; the other three devices stay usable', flush=True)
 
     # The native device is now the least recently seen one: a new browser login evicts it.
+    evicted_at = time.monotonic()
     fourth = login(args.base, args.ca, callback)
     fourth_token = token(fourth, 'test-browser', callback)
-    evicted_at = time.monotonic()
     require(silent(second, callback) == 'alive' and silent(third, callback) == 'alive', 'Browsers newer than the native device must survive')
     if gateway:
         wait_rejected(gateway, native_token, evicted_at, 'evicted native device')
@@ -122,8 +122,8 @@ def main():
     portal_token = token(fourth, 'portal', 'https://portal.example/callback')
     book_token = token(fourth, 'flippo-book', 'https://flippo-book.example/callback')
     require(claims(portal_token)['sid'] == claims(book_token)['sid'] == claims(fourth_token)['sid'], 'Sites in one browser must share the session identifier')
-    fifth = login(args.base, args.ca, callback)
     evicted_at = time.monotonic()
+    fifth = login(args.base, args.ca, callback)
     require(silent(second, callback) == 'evicted', 'The least recently seen browser is evicted')
     require(silent(third, callback) == 'alive' and silent(fourth, callback) == 'alive' and silent(fifth, callback) == 'alive', 'Exactly one device is evicted for the fifth login')
     if gateway:

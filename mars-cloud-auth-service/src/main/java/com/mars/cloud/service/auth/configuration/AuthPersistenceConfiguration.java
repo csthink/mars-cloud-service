@@ -38,8 +38,8 @@ public class AuthPersistenceConfiguration {
             SessionRepository<? extends Session> sessions,ObjectProvider<OAuth2AuthorizationService> authorizations,RevocationStore revocations) {
         return new DeviceSessionService(jdbc,manager,clock,sessions,authorizations::getObject,revocations);
     }
-    @Bean OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc,RegisteredClientRepository clients,AuthSessionService sessions) {
-        return new SessionAuthorizationService(new JdbcOAuth2AuthorizationService(jdbc,clients),sessions,clients);
+    @Bean OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc,RegisteredClientRepository clients,AuthSessionService sessions,PlatformTransactionManager manager) {
+        return new SessionAuthorizationService(new JdbcOAuth2AuthorizationService(jdbc,clients),sessions,clients,manager);
     }
     @Bean OAuth2AuthorizationConsentService authorizationConsentService(JdbcTemplate jdbc,RegisteredClientRepository clients) {
         return new com.mars.cloud.service.auth.infrastructure.authorization.ClientConsentService(new JdbcOAuth2AuthorizationConsentService(jdbc,clients),clients);

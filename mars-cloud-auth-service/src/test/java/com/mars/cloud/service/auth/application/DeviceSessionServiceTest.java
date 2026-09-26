@@ -116,6 +116,19 @@ class DeviceSessionServiceTest {
         assertThat(audits()).isZero();
     }
 
+    @Test void rowsRegisteredWithinTheGraceWindowAreAliveBeforeTheirBackingStoreExists() {
+        String justLoggedIn = UUID.randomUUID().toString();
+        row(jdbc, justLoggedIn, "BROWSER", null, START.minusSeconds(30), null, null);
+        String justAuthorized = UUID.randomUUID().toString();
+        row(jdbc, justAuthorized, "NATIVE", "test-native", START.minusSeconds(5), null, null);
+        String older = browser(START.minus(Duration.ofHours(1)));
+        service().admit(USER, "BROWSER", null, request());
+        assertThat(rowOf(justLoggedIn).get("REVOKED_AT")).isNull();
+        assertThat(rowOf(justAuthorized).get("REVOKED_AT")).isNull();
+        assertThat(rowOf(older)).as("the two rows in the grace window count, so the older backed browser is evicted").containsEntry("REVOKE_REASON", "DEVICE_LIMIT");
+        assertThat(markers).containsExactly(older);
+    }
+
     @Test void nativeAuthorizationWithoutLiveTokensCountsAsExpired() {
         String id = UUID.randomUUID().toString();
         Instant past = Instant.now().minusSeconds(3600);

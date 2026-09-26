@@ -31,12 +31,12 @@ final class DeviceTestSupport {
     private DeviceTestSupport() { }
 
     /** Clock whose instant the test moves forward explicitly. */
-    static final class TestClock extends Clock {
+    static class TestClock extends Clock {
         private final AtomicReference<Instant> now = new AtomicReference<>(START);
         @Override public ZoneId getZone() { return ZoneOffset.UTC; }
         @Override public Clock withZone(ZoneId zone) { return this; }
         @Override public Instant instant() { return now.get(); }
-        void set(Instant instant) { now.set(instant); }
+        public void set(Instant instant) { now.set(instant); }
     }
 
     static DriverManagerDataSource dataSource() {

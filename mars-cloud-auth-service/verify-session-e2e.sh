@@ -18,7 +18,7 @@ for path in "$AUTH_ENV_FILE" "$GATEWAY_ENV_FILE" "$SESSION_E2E_CA_FILE" "$SESSIO
     if [ ! -f "$path" ]; then printf 'Missing input: %s\n' "$path" >&2; exit 2; fi
 done
 for port in "$AUTH_PORT" "$((AUTH_PORT + 1000))" "$GATEWAY_PORT" "$((GATEWAY_PORT + 1000))"; do
-    if lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | rg -q .; then
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | grep -q .; then
         printf 'Port %s is already in use\n' "$port" >&2; exit 2
     fi
 done

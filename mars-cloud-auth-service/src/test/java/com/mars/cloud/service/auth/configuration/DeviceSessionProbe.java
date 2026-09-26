@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -44,12 +45,15 @@ import org.springframework.security.oauth2.server.authorization.JdbcOAuth2Author
 import org.springframework.security.oauth2.server.authorization.OAuth2Authorization;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.session.data.redis.RedisIndexedSessionRepository;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Real MySQL and Redis probe: concurrent admission keeps three devices, revocation removes the authorization and the
- * browser session and writes the marker, a failed marker write rolls the database back, stale rows are reconciled as
- * EXPIRED, retention deletes old rows and the SMS risk counters expire within a day.
+ * Real MySQL and Redis probe. Rows are registered in the runtime order (database row first, backing store afterwards):
+ * concurrent browser and native admissions keep exactly three devices without misjudging fresh rows, revocation removes
+ * the authorization and the browser session and writes the marker, a failed marker write rolls the database back, stale
+ * rows older than the admission grace are reconciled as EXPIRED, retention deletes old rows and the SMS risk counters
+ * expire within a day.
  */
 public final class DeviceSessionProbe {
     private static final MockServletContext CONTEXT = new MockServletContext();
@@ -62,6 +66,7 @@ public final class DeviceSessionProbe {
         check(database.equals(required("AUTH_VERIFY_DATABASE")) && database.contains("_verify_"), "Explicit verification database is required");
         var manager = new DataSourceTransactionManager(dataSource);
         var transactions = new TransactionTemplate(manager);
+        transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         var factory = factory(required("SPRING_DATA_REDIS_HOST"), Integer.parseInt(required("SPRING_DATA_REDIS_PORT")));
         var unreachable = factory("127.0.0.1", 9);
         try {
@@ -82,21 +87,14 @@ public final class DeviceSessionProbe {
             RegisteredClient nativeClient = clients.findByClientId("test-native");
             check(nativeClient != null, "The verification database must register test-native");
 
-            // Three devices, then two concurrent fourth logins: exactly three stay active, the two oldest are evicted.
+            // Three browsers, then two concurrent fourth logins: exactly three stay active, the two oldest are evicted,
+            // and the row committed by the first login is not misjudged by the second one waiting on the account lock.
             List<MockHttpServletRequest> browsers = new ArrayList<>();
             for (int i = 0; i < 3; i++) browsers.add(login(repository, sessions, transactions, user));
-            var ready = new CountDownLatch(2);
-            var start = new CountDownLatch(1);
-            List<MockHttpServletRequest> late;
-            try (var executor = Executors.newFixedThreadPool(2)) {
-                List<Future<MockHttpServletRequest>> futures = new ArrayList<>();
-                for (int i = 0; i < 2; i++) futures.add(executor.submit(() -> { ready.countDown(); start.await(); return login(repository, sessions, transactions, user); }));
-                check(ready.await(10, TimeUnit.SECONDS), "Both login workers must be ready");
-                start.countDown();
-                late = List.of(futures.get(0).get(30, TimeUnit.SECONDS), futures.get(1).get(30, TimeUnit.SECONDS));
-            }
-            check(active(user) == 3, "Concurrent admissions must leave exactly three active devices");
+            List<MockHttpServletRequest> late = concurrently(() -> login(repository, sessions, transactions, user), () -> login(repository, sessions, transactions, user));
+            check(active(user) == 3, "Concurrent browser admissions must leave exactly three active devices");
             check(count("SELECT COUNT(*) FROM sys_session WHERE user_id=? AND revoke_reason='DEVICE_LIMIT'", user) == 2, "Two devices are evicted for the limit");
+            check(count("SELECT COUNT(*) FROM sys_session WHERE user_id=? AND revoke_reason='EXPIRED'", user) == 0, "Fresh rows are never misjudged as EXPIRED");
             for (int i = 0; i < 2; i++) {
                 String evicted = sid(browsers.get(i));
                 check(repository.findById(evicted) == null, "Evicted browser session is deleted from Redis");
@@ -105,19 +103,23 @@ public final class DeviceSessionProbe {
             check(repository.findById(sid(browsers.get(2))) != null && repository.findById(sid(late.get(0))) != null && repository.findById(sid(late.get(1))) != null, "Surviving sessions stay usable");
             check(count("SELECT COUNT(*) FROM sys_login_log WHERE user_id=? AND event='SESSION_REVOKED'", user) == 2, "Each eviction has one audit row");
 
-            // A native device is admitted through an authenticated browser; evicting the oldest browser keeps three devices.
+            // Two concurrent native authorizations from one browser: the granting browser is never evicted and exactly
+            // three devices stay active (the browser and the two native devices).
             MockHttpServletRequest holder = late.get(1);
-            String nativeId = nativeDevice(store, sessions, transactions, nativeClient, user, holder);
-            check(active(user) == 3 && revoked(sid(browsers.get(2))).equals("DEVICE_LIMIT"), "Native admission evicts the least recently seen browser");
-            check(count("SELECT COUNT(*) FROM sys_session WHERE session_id=? AND kind='NATIVE' AND client_id='test-native'", nativeId) == 1, "Native row uses the authorization id");
+            List<String> natives = concurrently(() -> nativeDevice(store, sessions, transactions, nativeClient, user, holder), () -> nativeDevice(store, sessions, transactions, nativeClient, user, holder));
+            check(active(user) == 3, "Concurrent native admissions must leave exactly three active devices");
+            check(revoked(sid(holder)) == null, "The browser granting the authorizations stays active");
+            for (String id : natives) check(revoked(id) == null && count("SELECT COUNT(*) FROM sys_session WHERE session_id=? AND kind='NATIVE' AND client_id='test-native'", id) == 1, "Native rows use the authorization id and stay active");
+            check(count("SELECT COUNT(*) FROM sys_session WHERE user_id=? AND revoke_reason='DEVICE_LIMIT'", user) == 4 && count("SELECT COUNT(*) FROM sys_session WHERE user_id=? AND revoke_reason='EXPIRED'", user) == 0, "Two more evictions, still no misjudged row");
 
             // Revocation side effects in order: authorization gone, browser session gone, marker present, audit written.
+            String nativeId = natives.get(0);
             check(devices.revoke(nativeId, RevokeReason.ADMIN), "Native revocation must succeed");
             check(store.findById(nativeId) == null, "Revoked native authorization is removed");
             marker(strings, nativeId);
             check(revoked(nativeId).equals("ADMIN"), "Native row records the reason");
             check(!devices.revoke(nativeId, RevokeReason.ADMIN), "Second revocation is a no-op");
-            String keeper = sid(late.get(0));
+            String keeper = sid(holder);
             check(devices.revoke(keeper, RevokeReason.USER_DISABLED), "Browser revocation must succeed");
             check(repository.findById(keeper) == null, "Revoked browser session is deleted from Redis");
             marker(strings, keeper);
@@ -126,21 +128,23 @@ public final class DeviceSessionProbe {
 
             // A marker write that fails rolls the row and the authorization back.
             var broken = new DeviceSessionService(jdbc, manager, Clock.systemUTC(), repository, () -> store, new RedisRevocationStore(new StringRedisTemplate(unreachable)));
-            String second = nativeDevice(store, sessions, transactions, nativeClient, user, holder);
+            MockHttpServletRequest holder2 = login(repository, sessions, transactions, user);
+            String second = nativeDevice(store, sessions, transactions, nativeClient, user, holder2);
             try { broken.revoke(second, RevokeReason.ADMIN); throw new AssertionError("Revocation must fail when the marker cannot be written"); }
             catch (org.springframework.dao.DataAccessException | IllegalStateException expected) { }
             check(revoked(second) == null && store.findById(second) != null, "Failed marker write rolls back the row and keeps the authorization");
             check(!Boolean.TRUE.equals(strings.hasKey(RevocationStore.KEY_PREFIX + second)), "No marker after the failed write");
 
-            // Rows whose backing store disappeared are reconciled as EXPIRED and do not occupy a slot.
-            MockHttpServletRequest browser = login(repository, sessions, transactions, user);
-            check(active(user) == 3, "Holder, second native device and the new browser are active");
-            repository.deleteById(sid(holder));
+            // Rows older than the admission grace whose backing store disappeared are reconciled as EXPIRED.
+            check(active(user) == 3, "Remaining native device, the second browser and its native device are active");
+            repository.deleteById(sid(holder2));
             store.remove(store.findById(second));
+            backdate(sid(holder2), second, natives.get(1));
             MockHttpServletRequest another = login(repository, sessions, transactions, user);
-            check(revoked(sid(holder)).equals("EXPIRED") && revoked(second).equals("EXPIRED"), "Stale rows are marked EXPIRED");
-            check(!Boolean.TRUE.equals(strings.hasKey(RevocationStore.KEY_PREFIX + sid(holder))), "EXPIRED rows get no marker");
-            check(active(user) == 2 && revoked(sid(browser)) == null && revoked(sid(another)) == null, "Stale rows did not trigger an eviction");
+            check(revoked(sid(holder2)).equals("EXPIRED") && revoked(second).equals("EXPIRED"), "Stale rows are marked EXPIRED");
+            check(revoked(natives.get(1)) == null, "A backed native row older than the grace stays active");
+            check(!Boolean.TRUE.equals(strings.hasKey(RevocationStore.KEY_PREFIX + sid(holder2))), "EXPIRED rows get no marker");
+            check(active(user) == 2 && revoked(sid(another)) == null, "Stale rows did not trigger an eviction");
 
             // Retention: rows revoked more than thirty days ago are purged, newer ones stay, and the purge uses an index.
             Instant now = Instant.now();
@@ -154,7 +158,7 @@ public final class DeviceSessionProbe {
 
             // Risk counters written by the SMS acceptance expire within 24 hours (plus the one-second window guard).
             riskCounterLifetimes(strings);
-            System.out.println("PASS: concurrent device limit, native admission, ordered revocation, marker rollback, expiry reconciliation, retention and risk counter lifetimes");
+            System.out.println("PASS: concurrent browser and native admissions, ordered revocation, marker rollback, expiry reconciliation, retention and risk counter lifetimes");
         } finally {
             unreachable.destroy();
             factory.destroy();
@@ -171,17 +175,32 @@ public final class DeviceSessionProbe {
         return factory;
     }
 
+    /** Runs both actions at the same moment and returns their results in order. */
+    private static <T> List<T> concurrently(Callable<T> first, Callable<T> second) throws Exception {
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            List<Future<T>> futures = new ArrayList<>();
+            for (Callable<T> action : List.of(first, second)) futures.add(executor.submit(() -> { ready.countDown(); start.await(); return action.call(); }));
+            check(ready.await(10, TimeUnit.SECONDS), "Both workers must be ready");
+            start.countDown();
+            return List.of(futures.get(0).get(30, TimeUnit.SECONDS), futures.get(1).get(30, TimeUnit.SECONDS));
+        }
+    }
+
+    /** Registers the browser row inside a transaction and stores the Redis session afterwards, as the login response does. */
     private static MockHttpServletRequest login(RedisIndexedSessionRepository repository, AuthSessionService sessions, TransactionTemplate transactions, long user) {
         var stored = repository.createSession();
-        repository.save(stored);
         var request = new MockHttpServletRequest(CONTEXT);
         request.setSession(new MockHttpSession(CONTEXT, stored.getId()));
         request.setRemoteAddr("198.51.100.30");
         request.addHeader("User-Agent", "device probe");
         transactions.executeWithoutResult(status -> sessions.login(Long.toString(user), request));
+        repository.save(stored);
         return request;
     }
 
+    /** Registers the native row first and stores the authorization record afterwards. */
     private static String nativeDevice(JdbcOAuth2AuthorizationService store, AuthSessionService sessions, TransactionTemplate transactions, RegisteredClient client, long user, MockHttpServletRequest browser) {
         String id = UUID.randomUUID().toString();
         Instant now = Instant.now();
@@ -192,9 +211,14 @@ public final class DeviceSessionProbe {
                 .attribute(Principal.class.getName(), UsernamePasswordAuthenticationToken.authenticated(owner, null, owner.getAuthorities()))
                 .accessToken(new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "probe-access-" + id, now, now.plusSeconds(600), Set.of("openid")))
                 .refreshToken(new OAuth2RefreshToken("probe-refresh-" + id, now, now.plusSeconds(3600))).build();
-        store.save(authorization);
         transactions.executeWithoutResult(status -> sessions.authorizationSession(Long.toString(user), client.getClientId(), true, id, browser));
+        store.save(authorization);
         return id;
+    }
+
+    private static void backdate(String... ids) {
+        Timestamp past = Timestamp.from(Instant.now().minus(DeviceSessionService.ADMISSION_GRACE).minusSeconds(60));
+        for (String id : ids) jdbc.update("UPDATE sys_session SET created_at=?,last_seen_at=? WHERE session_id=?", past, past, id);
     }
 
     private static void marker(StringRedisTemplate strings, String sid) {

@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -14,7 +15,8 @@ public class AuthSessionService {
     private final Clock clock;
     private final DeviceSessionService devices;
     public AuthSessionService(JdbcTemplate jdbc,Clock clock,DeviceSessionService devices) { this.jdbc=jdbc; this.clock=clock; this.devices=devices; }
-    @Transactional
+    /** Admission serializes the account and must see committed rows, so both entry points read committed data. */
+    @Transactional(isolation=Isolation.READ_COMMITTED)
     public void login(String userId,HttpServletRequest request) {
         String sid=request.getSession(false).getId();
         devices.admit(Long.parseLong(userId),DeviceSessionService.BROWSER,null,request);
@@ -26,10 +28,12 @@ public class AuthSessionService {
      * Associates an authorization with a device session. Browser clients reuse the authenticated browser session and
      * refresh its last activity; native clients get their own device row whose identifier is the protocol authorization id.
      */
-    @Transactional
+    @Transactional(isolation=Isolation.READ_COMMITTED)
     public String authorizationSession(String userId,String clientId,boolean nativeClient,String authorizationId,HttpServletRequest request) {
         var session=request.getSession(false);
         if (session==null) throw new IllegalStateException("Authenticated browser session is required");
+        long user=Long.parseLong(userId);
+        if (nativeClient) devices.lockAccount(user);
         Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM sys_session WHERE session_id=? AND user_id=? AND revoked_at IS NULL",Integer.class,session.getId(),Long.parseLong(userId));
         if (count==null || count!=1) throw new IllegalStateException("Authenticated session is not registered");
         if (!nativeClient) {
@@ -37,12 +41,14 @@ public class AuthSessionService {
             return session.getId();
         }
         if (authorizationId==null || !authorizationId.matches("[A-Za-z0-9_-]{1,100}")) throw new IllegalStateException("Authorization identifier is not a usable session identifier");
-        devices.admit(Long.parseLong(userId),DeviceSessionService.NATIVE,clientId,request);
+        // The browser granting the native authorization is in use right now; it must not be the device that gets evicted.
+        jdbc.update("UPDATE sys_session SET last_seen_at=? WHERE session_id=?",Timestamp.from(clock.instant()),session.getId());
+        devices.admit(user,DeviceSessionService.NATIVE,clientId,request);
         insert(authorizationId,userId,clientId,DeviceSessionService.NATIVE,request);
         return authorizationId;
     }
     /** Records activity of a native device when its authorization issues or refreshes tokens. */
-    @Transactional
+    @Transactional(isolation=Isolation.READ_COMMITTED)
     public void touchNative(String sessionId) {
         jdbc.update("UPDATE sys_session SET last_seen_at=? WHERE session_id=? AND kind='NATIVE' AND revoked_at IS NULL",Timestamp.from(clock.instant()),sessionId);
     }
