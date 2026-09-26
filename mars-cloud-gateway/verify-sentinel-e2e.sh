@@ -139,7 +139,10 @@ published=$(date +%s)
 effective=''
 for ((attempt = 1; attempt <= 10; attempt++)); do
     statuses=$(burst GET /order/v1/orders "10.2.0.$attempt" 3)
-    if [ "${statuses##* }" = 429 ]; then effective=$(( $(date +%s) - published )); break; fi
+    case "$statuses" in
+        "503 503 429") effective=$(( $(date +%s) - published )); break ;;
+        *429-wrong-body*) fail "tightened rules: 429 without the 63006 envelope ($statuses)" ;;
+    esac
     sleep 1
 done
 [ -n "$effective" ] || fail "tightened rules did not take effect within 10 seconds"
@@ -173,8 +176,17 @@ expect_blocked_third "previous rules after an invalid update" 10.5.0.1
 for ((i = 0; i < 10; i++)); do grep -q '配置已被删除或内容为空白' "$work/run-1.log" && break; sleep 1; done
 grep -q '配置已被删除或内容为空白' "$work/run-1.log" || fail "deleting the data ID was not rejected loudly"
 expect_blocked_third "previous rules after the data ID was deleted" 10.6.0.1
-# 写回收紧规则，供重启用例读取；内容与仍在生效的一批相同，不产生「规则已更新」日志
+# 写回收紧规则，供重启用例读取；内容与仍在生效的一批相同，不产生「规则已更新」日志。
+# 等 Nacos 客户端把这次推送交给监听器（notify-ok）再停机：推送若与停机同时发生，Nacos 客户端在停机中登记
+# shutdown hook 会失败并写一行 ERROR，那是客户端库在停机窗口的行为，不是本次验收要核对的内容
+delivered_before=$(grep -c "notify-ok\] dataId=$FLOW_ID," "$work/run-1.log" || true)
 printf '%s' "$tight_rules" | "${rules[@]}" put "$FLOW_ID" - >/dev/null
+for ((i = 0; i < 10; i++)); do
+    [ "$(grep -c "notify-ok\] dataId=$FLOW_ID," "$work/run-1.log" || true)" -gt "$delivered_before" ] && break
+    sleep 1
+done
+[ "$(grep -c "notify-ok\] dataId=$FLOW_ID," "$work/run-1.log" || true)" -gt "$delivered_before" ] \
+    || fail "the republished rules were not delivered to the gateway within 10 seconds"
 ok "invalid and deleted configurations kept the previous rules"
 
 echo "== 只监听业务端口与管理端口"
