@@ -1,5 +1,7 @@
 package com.mars.cloud.service.gateway.sentinel;
 
+import com.alibaba.csp.sentinel.adapter.gateway.common.api.GatewayApiDefinitionManager;
+import com.alibaba.csp.sentinel.adapter.gateway.common.rule.GatewayRuleManager;
 import com.mars.cloud.sentinel.autoconfigure.MarsSentinelProperties;
 import com.mars.cloud.sentinel.rule.RuleType;
 import com.mars.cloud.service.gateway.GatewayApplication;
@@ -22,14 +24,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 网关限流经真实的错误处理写出统一信封：429、码 {@code 63006}、按语言的文案；
- * 计数用入站过滤器核对后的客户端地址（本机可信代理数为 0，即 TCP 对端地址）。
+ * 客户端地址的交换属性名与入站过滤器写入的一致；本机基线规则能通过路由 ID 与分组的校验。
  */
 @SpringBootTest(classes = GatewayApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "spring.autoconfigure.exclude=com.mars.cloud.security.autoconfigure.ReactiveSecurityAutoConfiguration,com.mars.cloud.security.autoconfigure.ServletSecurityAutoConfiguration")
@@ -40,6 +45,7 @@ class GatewayRateLimitTest {
 
     private static final HttpServer UPSTREAM = startUpstream();
     private static final String FLOW = RuleType.GATEWAY_FLOW.dataId("mars-cloud-gateway");
+    private static final String GROUPS = RuleType.GATEWAY_API_GROUP.dataId("mars-cloud-gateway");
 
     @Autowired
     WebTestClient client;
@@ -58,10 +64,11 @@ class GatewayRateLimitTest {
         UPSTREAM.stop(0);
     }
 
-    /** 规则在运行中下发到本用例的上下文，结束时清空，不影响复用这个上下文的其他用例。 */
+    /** 规则在运行中下发到本用例的上下文，结束时清空，不影响复用这个上下文的其他用例；先清限流规则，再清它引用的分组。 */
     @AfterEach
     void clearRules() {
         rules.publish(FLOW, "[]");
+        rules.publish(GROUPS, "[]");
     }
 
     @Test
@@ -86,9 +93,22 @@ class GatewayRateLimitTest {
     }
 
     @Test
-    void theLimiterCountsTheAddressThatTheIngressFilterVerified() {
+    void theClientAddressAttributeIsTheOneTheIngressFilterWrites() {
         assertThat(sentinelProperties.getGateway().getClientIpAttribute())
                 .isEqualTo(GatewayIngressFilter.CLIENT_IP_ATTRIBUTE);
+    }
+
+    /** {@code dev/config/sentinel/} 的基线：分组先装入，七条路由规则与一条分组规则都引用已声明的名字，整批被接受。 */
+    @Test
+    void theLocalBaselineRulesAreAccepted() throws IOException {
+        Path baseline = Path.of("..", "dev", "config", "sentinel");
+        rules.publish(GROUPS, Files.readString(baseline.resolve(GROUPS)));
+        rules.publish(FLOW, Files.readString(baseline.resolve(FLOW)));
+
+        assertThat(GatewayApiDefinitionManager.getApiDefinitions()).hasSize(1);
+        assertThat(GatewayRuleManager.getRules()).hasSize(8);
+        assertThat(registry.get("mars.sentinel.rule.source.valid").tag("rule_type", "gw-flow").gauge().value()).isEqualTo(1);
+        assertThat(registry.get("mars.sentinel.rules.active").tag("rule_type", "gw-flow").gauge().value()).isEqualTo(8);
     }
 
     private static HttpServer startUpstream() {
