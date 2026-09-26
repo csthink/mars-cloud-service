@@ -28,12 +28,12 @@ class LocalCorsOriginTest {
                 .header("Access-Control-Request-Method", "GET")
                 .exchange()
                 .expectStatus().isOk()
-                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://127.0.0.1:5173");
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://127.0.0.1:5173").expectBody();
         client.options().uri("/product/v1/catalog")
                 .header("Host", "api.flippoabc.com")
                 .header("Origin", "http://127.0.0.1:5174")
                 .header("Access-Control-Request-Method", "GET")
                 .exchange()
-                .expectStatus().isForbidden();
+                .expectStatus().isForbidden().expectBody();
     }
 }

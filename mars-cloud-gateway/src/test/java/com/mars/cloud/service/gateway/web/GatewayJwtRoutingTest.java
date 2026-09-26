@@ -38,7 +38,12 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 
-/** Exercises the deployed Gateway security chain through its HTTP listener and routed upstream. */
+/**
+ * Exercises the deployed Gateway security chain through its HTTP listener and routed upstream.
+ *
+ * <p>Every request reads its response body to the end: a body that is never consumed stays in the test client's
+ * Reactor Netty buffers until garbage collection, and Netty's leak detector reports it as a leaked buffer.
+ */
 @SpringBootTest(classes = GatewayApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "logging.level.com.mars.cloud.service.gateway.web.EnvelopeErrorWebExceptionHandler=ERROR")
 @ActiveProfiles({"local", "test", "security-integration"})
@@ -125,19 +130,19 @@ class GatewayJwtRoutingTest {
         web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
                 .header("X-Mars-Client-Id", "console")
                 .headers(headers -> headers.setBearerAuth(adminToken("portal")))
-                .exchange().expectStatus().isForbidden();
+                .exchange().expectStatus().isForbidden().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(0);
 
         web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
                 .header("X-Forwarded-For", "192.0.2.10")
                 .headers(headers -> headers.setBearerAuth(adminToken("console")))
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         web.get().uri("/product/v1/admin").header("Host", "api.flippoabc.com")
                 .headers(headers -> headers.setBearerAuth(adminToken("portal")))
-                .exchange().expectStatus().isForbidden();
+                .exchange().expectStatus().isForbidden().expectBody();
         web.get().uri("/auth/v1/admin/users").header("Host", "api.flippoabc.com")
                 .headers(headers -> headers.setBearerAuth(adminToken("console")))
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(2);
 
         ADMIN_CIDRS.set("192.0.2.0/24");
@@ -154,7 +159,7 @@ class GatewayJwtRoutingTest {
         for (String path : new String[]{"/product/v1/admin%2Fitems", "/product/v1/%2eadmin/items",
                 "/product/v1/../v1/admin/items", "/product//v1/admin/items", "/product/v1/admin;foo=bar/items"}) {
             web.get().uri(URI.create("http://127.0.0.1:" + port + path)).header("Host", "api.flippoabc.com")
-                    .exchange().expectStatus().isBadRequest();
+                    .exchange().expectStatus().isBadRequest().expectBody();
         }
         assertThat(UPSTREAM_CALLS).hasValue(0);
     }
@@ -178,7 +183,7 @@ class GatewayJwtRoutingTest {
 
         web.get().uri("/auth/v1/me").header("Host", "api.flippoabc.com")
                 .headers(headers -> headers.setBearerAuth(signedToken(UUID.randomUUID().toString())))
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(1);
     }
 
@@ -226,7 +231,7 @@ class GatewayJwtRoutingTest {
     @Test
     void issuerAndUnmatchedRequestsKeepTheirRouteBoundary() {
         web.get().uri("/login").header("Host", "auth.flippoabc.com")
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(1);
 
         web.get().uri("/auth/v1/me").header("Host", "auth.flippoabc.com")
@@ -238,42 +243,42 @@ class GatewayJwtRoutingTest {
         web.get().uri("/not-routed").header("Host", "api.flippoabc.com")
                 .exchange().expectStatus().isNotFound().expectBody().jsonPath("$.code").isEqualTo("63001");
         web.get().uri("/auth%2Fv1/me").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().is4xxClientError();
+                .exchange().expectStatus().is4xxClientError().expectBody();
         web.get().uri("/auth/v1%2Fme").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().is4xxClientError();
+                .exchange().expectStatus().is4xxClientError().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(1);
     }
 
     @Test
     void paymentCallbackIsAnonymousOnlyOnApiHost() {
         web.post().uri("/order/v1/callbacks/mock").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         verifyNoInteractions(redis);
 
         web.post().uri("/order/v1/orders").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized().expectBody();
         web.post().uri("/order/v1/callbacks-other/mock").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized().expectBody();
         web.post().uri("/order/v1/callbacks/mock").header("Host", "auth.flippoabc.com")
-                .exchange().expectStatus().isNotFound();
+                .exchange().expectStatus().isNotFound().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(1);
 
         web.post().uri("/order/v1/orders").header("Host", "api.flippoabc.com")
                 .headers(headers -> headers.setBearerAuth(signedToken(UUID.randomUUID().toString())))
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(2);
     }
 
     @Test
     void publicReadsRemainAnonymousButPersonalAndAdminReadsRequireBearer() {
         web.get().uri("/product/v1/catalog").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         web.get().uri("/product/v1/me").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized().expectBody();
         web.get().uri("/product/v1/admin/items").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized().expectBody();
         web.post().uri("/product/v1/catalog").header("Host", "api.flippoabc.com")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized().expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(1);
     }
 
@@ -294,7 +299,7 @@ class GatewayJwtRoutingTest {
                 .header("Origin", "https://console.flippoabc.com")
                 .header("Access-Control-Request-Method", "GET")
                 .exchange().expectStatus().isOk()
-                .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://console.flippoabc.com");
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://console.flippoabc.com").expectBody();
         assertThat(UPSTREAM_CALLS).hasValue(0);
     }
 }

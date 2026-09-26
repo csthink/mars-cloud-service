@@ -94,8 +94,8 @@ class GatewaySecurityContractTest {
     void realGatewayMethodUsesDiscoveredPdpWithoutRetry(String outcome, int remoteStatus, int status, String code) {
         decision = outcome; downstreamStatus = remoteStatus;
         String token = ISSUER.token("alice", "mars-cloud-gateway", "mars-cloud-upms-service");
-        var result = web.get().uri("/security-test/decision").headers(headers -> headers.setBearerAuth(token)).exchange().expectStatus().isEqualTo(status);
-        if (code != null) result.expectBody().jsonPath("$.code").isEqualTo(code);
+        var body = web.get().uri("/security-test/decision").headers(headers -> headers.setBearerAuth(token)).exchange().expectStatus().isEqualTo(status).expectBody();
+        if (code != null) body.jsonPath("$.code").isEqualTo(code);
         assertThat(CALLS).hasValue(1);
         assertThat(EXECUTIONS).hasValue(status == 200 ? 1 : 0);
         assertThat(FORWARDED.get()).isEqualTo("Bearer " + token);

@@ -88,7 +88,7 @@ class GatewayRateLimitTest {
         rules.publish(FLOW, """
                 [{"resource":"rate-limit-upstream","count":1,"intervalSec":60,"paramItem":{"parseStrategy":0}}]
                 """);
-        send(HttpMethod.GET, "/rate-limit-upstream/ok", API_HOST, "198.51.100.1").exchange().expectStatus().isOk();
+        send(HttpMethod.GET, "/rate-limit-upstream/ok", API_HOST, "198.51.100.1").exchange().expectStatus().isOk().expectBody();
 
         send(HttpMethod.GET, "/rate-limit-upstream/ok", API_HOST, "198.51.100.1")
                 .header("Accept-Language", "zh-CN")

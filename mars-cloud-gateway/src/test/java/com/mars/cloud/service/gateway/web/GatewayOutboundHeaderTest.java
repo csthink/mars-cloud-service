@@ -66,7 +66,7 @@ class GatewayOutboundHeaderTest {
                 .header("X-Mars-Subject", "spoof")
                 .header("X-Mars-Client-Id", "spoof")
                 .header("X-Mars-Tenant-Id", "spoof")
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk().expectBody();
         Headers headers = RECEIVED.get();
         assertNotNull(headers);
         assertEquals("127.0.0.1", headers.getFirst("X-Forwarded-For"), headers.toString());

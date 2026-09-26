@@ -71,13 +71,13 @@ class GatewayHostAndCorsContractTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://flippoabc.com")
-                .expectHeader().doesNotExist("Access-Control-Allow-Credentials");
+                .expectHeader().doesNotExist("Access-Control-Allow-Credentials").expectBody();
         client.get().uri("/product/v1/catalog")
                 .header("Host", "api.flippoabc.com")
                 .header("Origin", "https://word.flippoabc.com")
                 .exchange()
                 .expectStatus().isEqualTo(503)
-                .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://word.flippoabc.com");
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "https://word.flippoabc.com").expectBody();
     }
 
     @Test
@@ -88,20 +88,20 @@ class GatewayHostAndCorsContractTest {
                 .header("Access-Control-Request-Method", "GET")
                 .exchange()
                 .expectStatus().isForbidden()
-                .expectHeader().doesNotExist("Access-Control-Allow-Origin");
+                .expectHeader().doesNotExist("Access-Control-Allow-Origin").expectBody();
         client.get().uri("/product/v1/catalog")
                 .header("Host", "api.flippoabc.com")
                 .header("Origin", "https://other.example")
                 .exchange()
                 .expectStatus().isForbidden()
-                .expectHeader().doesNotExist("Access-Control-Allow-Origin");
+                .expectHeader().doesNotExist("Access-Control-Allow-Origin").expectBody();
         client.options().uri("/product/v1/catalog")
                 .header("Host", "api.flippoabc.com")
                 .header("Origin", "https://console.flippoabc.com")
                 .header("Access-Control-Request-Method", "GET")
                 .header("Access-Control-Request-Headers", "x-unlisted")
                 .exchange()
-                .expectStatus().isForbidden();
+                .expectStatus().isForbidden().expectBody();
     }
 
     @Test
@@ -111,12 +111,12 @@ class GatewayHostAndCorsContractTest {
                 .header("Origin", "https://flippoabc.com")
                 .header("Access-Control-Request-Method", "GET")
                 .exchange()
-                .expectHeader().doesNotExist("Access-Control-Allow-Origin");
+                .expectHeader().doesNotExist("Access-Control-Allow-Origin").expectBody();
         client.options().uri("/no-such-path")
                 .header("Host", "api.flippoabc.com")
                 .header("Origin", "https://flippoabc.com")
                 .header("Access-Control-Request-Method", "GET")
                 .exchange()
-                .expectHeader().doesNotExist("Access-Control-Allow-Origin");
+                .expectHeader().doesNotExist("Access-Control-Allow-Origin").expectBody();
     }
 }
