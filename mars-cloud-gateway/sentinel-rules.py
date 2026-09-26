@@ -7,9 +7,10 @@ delete DATA_ID     deletes one data ID
 
 The Nacos address, namespace and account come from the env file (NACOS_SERVER_ADDR, NACOS_NAMESPACE_ID,
 NACOS_USERNAME, NACOS_PASSWORD). NACOS_SERVER_ADDR is one host:port without a scheme. Credentials are never printed.
-Every failure ends with one line on standard error and a non-zero exit status.
+Connection, HTTP, JSON and file errors end with one line on standard error and a non-zero exit status.
 """
 import argparse
+import http.client
 import json
 import pathlib
 import sys
@@ -64,7 +65,7 @@ class Nacos:
             sys.exit(f"Nacos {method} {path} returned HTTP {error.code}")
         except urllib.error.URLError as error:
             sys.exit(f"Nacos {method} {path} failed: {error.reason}")
-        except OSError as error:
+        except (OSError, http.client.HTTPException) as error:
             sys.exit(f"Nacos {method} {path} failed: {error}")
         except json.JSONDecodeError:
             sys.exit(f"Nacos {method} {path} returned a body that is not JSON")
@@ -117,5 +118,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except FileNotFoundError as error:
-        sys.exit(f"cannot read {error.filename}: {error.strerror}")
+    except OSError as error:
+        sys.exit(f"cannot read {getattr(error, 'filename', '') or 'input'}: {error.strerror or error}")

@@ -39,7 +39,7 @@ class ProductionGatewayExposureTest {
         rules.publish(FLOW, "[]");
     }
 
-    /** 不该暴露的路由每次都是 404：暴露检查在 Sentinel 网关过滤器之前执行，请求不被计数，不会变成 429。 */
+    /** 不该暴露的路由每次都是 404：暴露检查在 Sentinel 网关过滤器之前执行，这些请求不进入限流计数。 */
     @Test
     void hiddenRoutesAre404BeforeTheRateLimiterCountsThem() {
         rules.publish(FLOW, "[{\"resource\":\"upms\",\"count\":1,\"intervalSec\":60,\"paramItem\":{\"parseStrategy\":0}}]");
