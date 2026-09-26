@@ -117,7 +117,7 @@ done
 
 在编辑器中打开连接文件，将其中 `NACOS_SERVER_ADDR`、`NACOS_NAMESPACE_ID`、`NACOS_USERNAME`、`NACOS_PASSWORD` 的取值填入三个模块各自的 `.env`。使用已有环境时，填写其实际参数。保留其他有效配置，不整份覆盖已有 `.env`。
 
-三个模块均保持 `SPRING_PROFILES_ACTIVE=local`；UPMS 保持 `UPMS_LOCAL_FIXTURE_ENABLED=true`，用于加载演示权限数据。`SERVER_PORT` 保持注释，由各应用使用自己的默认端口；`SERVER_ADDRESS` 同样保持注释，四个部署物只监听本机回环地址并按它注册到 Nacos。sample 不使用数据库或 Redis，UPMS 的 `local` 配置关闭了这两者的连接与健康检查。
+三个模块均保持 `SPRING_PROFILES_ACTIVE=local`；UPMS 保持 `UPMS_LOCAL_FIXTURE_ENABLED=true`，用于加载演示权限数据。`SERVER_PORT` 保持注释，由各应用使用自己的默认端口；`SERVER_ADDRESS` 同样保持注释，四个部署物只监听本机回环地址并按它注册到 Nacos。sample 不使用数据库或 Redis，UPMS 的 `local` 配置关闭了这两者的连接与健康检查。gateway 要连 Redis：把它 `.env` 里 `SPRING_DATA_REDIS_HOST`、`_PORT`、`_PASSWORD`、`_DATABASE` 的注释去掉并填写（取 `python3 dev/middleware.py export-env` 的输出），否则网关的健康检查为 DOWN、带令牌的请求得到 `63005/503`。
 
 管理端点与调用链的变量按需填写，三个模块取值相同：
 
@@ -137,7 +137,7 @@ done
 
 ## 5. 启动本地测试签发器
 
-sample 和 UPMS 会校验访问令牌；只配 Nacos 还不能启动它们。二者共用同一个测试签发器，gateway 当前无需配置签发方。
+gateway、sample 和 UPMS 都会校验访问令牌；只配 Nacos 还不能启动它们。三者共用同一个测试签发器，gateway 没有签发方地址时同样不启动。
 
 在 service 根目录的 Terminal 中执行以下整段。它使用第 2 节设置的 Maven 本地仓库，通过已有测试依赖启动临时签发器：
 
@@ -151,7 +151,7 @@ trap stop_security_test_issuer EXIT
 trap 'exit 130' INT TERM
 start_security_test_issuer "$PWD"
 
-printf '\n将以下两行分别填入 sample 和 UPMS 的 .env：\n'
+printf '\n将以下两行分别填入 gateway、sample 和 UPMS 的 .env：\n'
 printf 'MARS_SECURITY_ISSUER_URI=%s\n' "$MARS_SECURITY_ISSUER_URI"
 printf 'MARS_SECURITY_JWK_SET_URI=%s\n' "$MARS_SECURITY_JWK_SET_URI"
 printf '\n业务请求所需的请求头文件路径：%s\n' "$SECURITY_CURL_HEADER"
@@ -161,6 +161,7 @@ BASH
 
 将输出的两个地址填入以下文件已有的同名配置项，没有则追加，不要重复定义：
 
+- `mars-cloud-gateway/.env`
 - `mars-cloud-sample-service/.env`
 - `mars-cloud-upms-service/.env`
 
@@ -168,7 +169,7 @@ BASH
 
 **保持这个 Terminal 运行，然后在 IDEA 中启动应用。** 终端里的环境变量不会自动传入已经打开的 IDEA 应用配置，因此必须按下一节显式加载 `.env`。
 
-测试令牌有效期为 5 分钟。健康检查不使用令牌，不受其过期影响；业务调试超过有效期时，停止并重新启动测试签发器，更新两份 `.env` 的地址、重新启动 sample 和 UPMS，并使用新生成的请求头文件。每次重启都会生成新的密钥和端口。
+测试令牌有效期为 5 分钟。健康检查不使用令牌，不受其过期影响；业务调试超过有效期时，停止并重新启动测试签发器，更新三份 `.env` 的地址、重新启动 gateway、sample 和 UPMS，并使用新生成的请求头文件。每次重启都会生成新的密钥和端口。
 
 此签发器只用于本地测试。脚本不打印令牌正文，退出时清理自己创建的进程和临时凭据；不要把测试支持依赖改为应用的运行时依赖。
 
@@ -261,7 +262,7 @@ curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
 | `Could not resolve placeholder 'NACOS_NAMESPACE_ID'` | 当前启动项是否加载了正确模块的 `.env`，文件中的 Namespace ID 是否非空 |
 | 连接 `127.0.0.1:9848` 被拒绝 | 检查是否遗漏 `NACOS_SERVER_ADDR` 而回退到默认 `8848`；默认编排应填写 `28848`，客户端连接对应的 `29848` |
 | Nacos 配置读取失败 | 核对容器状态、应用账号、Namespace ID、Group、Data ID；不要用 `optional:` 掩盖必需配置缺失 |
-| `Security issuer and JWK endpoints require HTTPS; loopback HTTP is local/test only` | 空地址也会触发此错误；sample 和 UPMS 都必须填写实际签发器地址，并启用 `local`。不要填写控制台地址 |
+| `Security issuer and JWK endpoints require HTTPS; loopback HTTP is local/test only` | 空地址也会触发此错误；gateway、sample 和 UPMS 都必须填写实际签发器地址，并启用 `local`。不要填写控制台地址 |
 | 签发方发现失败或业务令牌验证失败 | 确认测试签发器仍运行，地址与当前进程一致；令牌是否已超过 5 分钟；重启签发器后要同步地址、应用和请求头文件 |
 | 业务接口 `401`，健康检查正常 | 使用当前签发器生成的有效令牌；浏览器直接打开业务接口没有自动携带 Bearer 令牌 |
 | gateway 访问 UPMS 返回 `503` | 先检查 UPMS 直连健康，再确认二者在同一 Namespace、UPMS 已注册且尚有可用实例 |
@@ -273,4 +274,4 @@ curl --fail-with-body --header "@$AUTH_HEADER_FILE" \
 
 在 IDEA 停止三个应用（启动过面板时一并停止），再回测试签发器 Terminal 按回车，脚本会停止签发器并删除临时令牌。中间件可以保留供下一次调试使用；需要停止本项目中间件时，按 [中间件说明](../dev/README.md) 执行 `down`，它保留数据卷和状态。
 
-下次调试时，确认中间件可用，重新启动测试签发器，更新 sample 与 UPMS 的两个地址，再启动三个应用。framework 未变化时不必重复安装依赖；变化后按第 3 节重新安装。
+下次调试时，确认中间件可用，重新启动测试签发器，更新三份 `.env` 的两个地址，再启动三个应用。framework 未变化时不必重复安装依赖；变化后按第 3 节重新安装。

@@ -132,7 +132,7 @@ Nacos 内部固定为共享配置先导入、应用配置后导入。环境变�
 | `MARS_SECURITY_ISSUER_URI` | 网关、sample、UPMS 必填的可信 JWT issuer，部署环境使用 HTTPS |
 | `MARS_SECURITY_JWK_SET_URI` | 可选的 JWKS 地址，仍校验 issuer；部署环境使用 HTTPS |
 | `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_PASSWORD` | 数据源 |
-| `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis；auth-service 与网关使用，网关用它查询会话撤销状态 |
+| `SPRING_DATA_REDIS_HOST` / `_PORT` / `_PASSWORD` / `_DATABASE` | Redis；auth-service 与网关使用，网关用它查询会话撤销状态 |
 | `MARS_MANAGEMENT_USERNAME` / `MARS_MANAGEMENT_PASSWORD` | 管理端点 Basic 认证的账号；同一环境内各服务相同，监控面板用它读取各实例 |
 | `OTLP_TRACING_ENDPOINT` | 调用链导出端点（OTLP over HTTP 的完整地址）；留空则不导出 |
 | `MONITOR_USERNAME` / `MONITOR_PASSWORD` | 监控面板的管理员账号，只有 `mars-cloud-monitor` 读取；任一为空即启动失败 |
