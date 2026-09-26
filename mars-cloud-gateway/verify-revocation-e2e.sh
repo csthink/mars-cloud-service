@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Run the packaged Gateway against a disposable Redis process and a local HTTP upstream.
+# The gateway runs without Nacos here, and its rate limit rules are only read from Nacos, so the Sentinel component is
+# switched off for this process; rate limiting has its own acceptance in verify-sentinel-e2e.sh.
 set -euo pipefail
 
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -75,7 +77,7 @@ done
 start_security_test_issuer "$MODULE_DIR/.."
 SPRING_PROFILES_ACTIVE=local,test \
 SPRING_CLOUD_NACOS_CONFIG_ENABLED=false SPRING_CLOUD_NACOS_CONFIG_IMPORT_CHECK_ENABLED=false \
-SPRING_CLOUD_NACOS_DISCOVERY_ENABLED=false \
+SPRING_CLOUD_NACOS_DISCOVERY_ENABLED=false SPRING_CLOUD_SENTINEL_ENABLED=false \
 SPRING_DATA_REDIS_HOST=127.0.0.1 SPRING_DATA_REDIS_PORT="$REDIS_PORT" SPRING_DATA_REDIS_DATABASE=2 \
 SERVER_PORT="$GATEWAY_PORT" MARS_SECURITY_ISSUER_URI="$MARS_SECURITY_ISSUER_URI" \
 MARS_SECURITY_JWK_SET_URI="$MARS_SECURITY_JWK_SET_URI" \
