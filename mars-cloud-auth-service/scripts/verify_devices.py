@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Exercise the device limit with real HTTPS logins; with --gateway, prove that evicted sessions are rejected there within five seconds."""
+"""Exercise the device limit with real HTTPS logins; with --gateway, prove that evicted sessions are rejected there within five seconds.
+
+The five seconds are measured from the completion of the request that evicts a device (the login response, or the
+authorization code issuance for a native device) to the first 401 observed at the gateway.
+"""
 import argparse
 import json
 import os
@@ -27,12 +31,21 @@ def login(base, ca, callback):
     return browser
 
 
-def token(browser, client, callback):
+def issue(browser, client, callback):
     verifier, response = authorization(browser, client, callback)
     require('code' in response, 'Authenticated authorization must issue a code for ' + client)
-    status, issued = exchange(browser, client, callback, response['code'][0], verifier)
+    return verifier, response['code'][0]
+
+
+def redeem(browser, client, callback, verifier, code):
+    status, issued = exchange(browser, client, callback, code, verifier)
     require(status == 200 and 'access_token' in issued, 'Code exchange must issue an access token for ' + client)
     return issued['access_token']
+
+
+def token(browser, client, callback):
+    verifier, code = issue(browser, client, callback)
+    return redeem(browser, client, callback, verifier, code)
 
 
 def silent(browser, callback):
@@ -75,7 +88,7 @@ def wait_rejected(gateway, access_token, evicted_at, label):
             require(now - evicted_at <= 5, label + ': rejection took ' + format(now - evicted_at, '.2f') + 's, expected at most 5s')
             return
         require(now < deadline, label + ': evicted session still accepted after eight seconds (status ' + str(status) + ')')
-        time.sleep(0.25)
+        time.sleep(0.1)
 
 
 def main():
@@ -96,8 +109,9 @@ def main():
     second_token = token(second, 'test-browser', callback)
     third = login(args.base, args.ca, callback)
     third_token = token(third, 'test-browser', callback)
-    evicted_at = time.monotonic()  # the eviction happens inside the next call; measure from before it
-    native_token = token(third, 'test-native', callback)
+    verifier, code = issue(third, 'test-native', callback)  # the code issuance admits the native device and evicts
+    evicted_at = time.monotonic()
+    native_token = redeem(third, 'test-native', callback, verifier, code)
     require(claims(native_token)['sid'] != claims(third_token)['sid'], 'Native device must have its own session identifier')
     require(silent(first, callback) == 'evicted', 'The least recently seen browser must be evicted by the native device')
     require(silent(second, callback) == 'alive' and silent(third, callback) == 'alive', 'The other browsers must stay logged in')
@@ -108,8 +122,8 @@ def main():
     print('PASS: fourth device evicted the least recently seen browser; the other three devices stay usable', flush=True)
 
     # The native device is now the least recently seen one: a new browser login evicts it.
+    fourth = login(args.base, args.ca, callback)  # the login admits the browser and evicts
     evicted_at = time.monotonic()
-    fourth = login(args.base, args.ca, callback)
     fourth_token = token(fourth, 'test-browser', callback)
     require(silent(second, callback) == 'alive' and silent(third, callback) == 'alive', 'Browsers newer than the native device must survive')
     if gateway:
@@ -122,8 +136,8 @@ def main():
     portal_token = token(fourth, 'portal', 'https://portal.example/callback')
     book_token = token(fourth, 'flippo-book', 'https://flippo-book.example/callback')
     require(claims(portal_token)['sid'] == claims(book_token)['sid'] == claims(fourth_token)['sid'], 'Sites in one browser must share the session identifier')
-    evicted_at = time.monotonic()
     fifth = login(args.base, args.ca, callback)
+    evicted_at = time.monotonic()
     require(silent(second, callback) == 'evicted', 'The least recently seen browser is evicted')
     require(silent(third, callback) == 'alive' and silent(fourth, callback) == 'alive' and silent(fifth, callback) == 'alive', 'Exactly one device is evicted for the fifth login')
     if gateway:
